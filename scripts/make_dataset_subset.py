@@ -26,12 +26,16 @@ def main():
 
         for i in idxs:
             ex = ds[i]
+            # MGSM provides both a free-form solution string (`answer`) and
+            # a numeric field (`answer_number`). For accuracy we want the
+            # numeric gold answer, so we store `answer_number` as a string.
+            gold_num = ex.get("answer_number")
             rows.append(
                 {
                     "lang": lang,
                     "id": f"{lang}_{i}",
                     "question": ex["question"],
-                    "answer": ex["answer"],
+                    "answer": "" if gold_num is None else str(gold_num),
                 }
             )
 

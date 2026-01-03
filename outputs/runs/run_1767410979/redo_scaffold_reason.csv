@@ -1,0 +1,6 @@
+id,lang,cond,model,gold,pred_none,pred_pivot,pred_rand,correct_none,correct_pivot,correct_rand
+de_0,de,target_cot,reason,18,,,12.5,False,False,False
+de_0,de,en_cot,reason,18,148.0,,,False,False,False
+de_100,de,target_cot,reason,175,,,,False,False,False
+de_100,de,en_cot,reason,175,360.0,,360,False,False,False
+de_105,de,target_cot,reason,20,13.0,,13,False,False,False

@@ -19,6 +19,6 @@ class Config:
     temperature: float = 0.2
 
     # runtime
-    # Default device preference for Colab / GPU runs.
+    # Default device preference for local runs on macOS with MPS support.
     # Options: "cuda", "mps", "cpu"
-    device_preference: str = "cuda"
+    device_preference: str = "mps"

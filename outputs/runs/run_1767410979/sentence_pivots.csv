@@ -1,0 +1,159 @@
+id,lang,cond,model,rank,sent_idx,pivot_score,pivot_p95,char_start,char_end,n_tokens,sentence
+de_0,de,target_cot,reason,1,0,1.1708984375,3.203125,0,33,6,"You are a careful mathematician.
+"
+de_0,de,target_cot,reason,2,1,1.1689453125,3.154296875,33,119,22,"Solve the problem step by step in de, then give the final answer as: FINAL: <number>
+
+"
+de_0,de,target_cot,reason,3,18,1.0078125,4.0546875,1045,1091,14,"Therefore, the final answer is: FINAL: $50. 
+
+"
+de_0,de,target_cot,reason,4,2,0.97265625,1.0556640625,119,128,2,"Problem:
+"
+de_0,de,target_cot,reason,5,3,0.71337890625,1.404296875,128,164,15,Janets Enten legen 16 Eier pro Tag. 
+de_0,de,target_cot,reason,6,7,0.5791015625,1.0966796875,407,431,5,"Step-by-step solution:
+
+"
+de_0,de,target_cot,reason,7,6,0.52734375,1.671875,348,407,14,"Wie viel Dollar nimmt sie täglich auf dem Bauernmarkt ein?
+"
+de_0,de,target_cot,reason,8,19,0.4501953125,1.5078125,1091,1179,26,"Janet sells her eggs and muffins for $2 each, so on the market she makes $50 per day. 
+
+"
+de_0,de,en_cot,reason,1,0,1.1708984375,3.203125,0,33,6,"You are a careful mathematician.
+"
+de_0,de,en_cot,reason,2,1,1.119140625,3.14453125,33,124,22,"Solve the problem step by step in English, then give the final answer as: FINAL: <number>
+
+"
+de_0,de,en_cot,reason,3,3,0.76904296875,1.484375,133,169,15,Janets Enten legen 16 Eier pro Tag. 
+de_0,de,en_cot,reason,4,22,0.73095703125,2.015625,1251,1267,8,"FINAL: 148 USD
+
+"
+de_0,de,en_cot,reason,5,2,0.6376953125,1.0478515625,124,133,2,"Problem:
+"
+de_0,de,en_cot,reason,6,16,0.55517578125,1.83984375,965,1023,11,"Final Answer: The final amount is calculated as follows:
+
+"
+de_0,de,en_cot,reason,7,6,0.5341796875,1.64453125,353,412,14,"Wie viel Dollar nimmt sie täglich auf dem Bauernmarkt ein?
+"
+de_0,de,en_cot,reason,8,23,0.4541015625,2.0,1267,1292,9,"So, Janet buys $148 daily"
+de_100,de,target_cot,reason,1,0,1.1708984375,3.203125,0,33,6,"You are a careful mathematician.
+"
+de_100,de,target_cot,reason,2,1,1.1689453125,3.154296875,33,119,22,"Solve the problem step by step in de, then give the final answer as: FINAL: <number>
+
+"
+de_100,de,target_cot,reason,3,2,0.97265625,1.0556640625,119,128,2,"Problem:
+"
+de_100,de,target_cot,reason,4,7,0.701171875,1.3330078125,536,560,5,"Step-by-step solution:
+
+"
+de_100,de,target_cot,reason,5,4,0.51123046875,1.857421875,191,346,49,"Der erste Freund hat 20-mal die Türklingel betätigt, bevor Jerome öffnete, der zweite hat die Türklingel 1/4 Mal öfter betätigt als Jeromes erster Freund. "
+de_100,de,target_cot,reason,6,3,0.339599609375,0.6474609375,128,191,20,"Jerome hat 4 Freunde, die ihn an einem gewissen Tag besuchten. "
+de_100,de,target_cot,reason,7,5,0.299072265625,1.7158203125,346,428,26,Der dritte Freund hat die Türklingel 10-mal öfter betätigt als der vierte Freund. 
+de_100,de,target_cot,reason,8,8,0.260009765625,0.98046875,560,682,28,"1. First, let's determine how many times each of the other friends' bets were made compared to Jerome's first friend.
+
+   "
+de_100,de,en_cot,reason,1,0,1.1708984375,3.203125,0,33,6,"You are a careful mathematician.
+"
+de_100,de,en_cot,reason,2,1,1.119140625,3.14453125,33,124,22,"Solve the problem step by step in English, then give the final answer as: FINAL: <number>
+
+"
+de_100,de,en_cot,reason,3,2,0.6376953125,1.0478515625,124,133,2,"Problem:
+"
+de_100,de,en_cot,reason,4,4,0.51904296875,1.853515625,196,351,49,"Der erste Freund hat 20-mal die Türklingel betätigt, bevor Jerome öffnete, der zweite hat die Türklingel 1/4 Mal öfter betätigt als Jeromes erster Freund. "
+de_100,de,en_cot,reason,5,7,0.5185546875,1.822265625,541,553,7,"FINAL: 360
+
+"
+de_100,de,en_cot,reason,6,8,0.362548828125,1.39453125,553,585,8,"Let's solve this step-by-step:
+
+"
+de_100,de,en_cot,reason,7,3,0.301025390625,0.66943359375,133,196,20,"Jerome hat 4 Freunde, die ihn an einem gewissen Tag besuchten. "
+de_100,de,en_cot,reason,8,5,0.27978515625,1.75,351,433,26,Der dritte Freund hat die Türklingel 10-mal öfter betätigt als der vierte Freund. 
+de_105,de,target_cot,reason,1,0,1.1708984375,3.203125,0,33,6,"You are a careful mathematician.
+"
+de_105,de,target_cot,reason,2,1,1.1689453125,3.154296875,33,119,22,"Solve the problem step by step in de, then give the final answer as: FINAL: <number>
+
+"
+de_105,de,target_cot,reason,3,2,0.97265625,1.0556640625,119,128,2,"Problem:
+"
+de_105,de,target_cot,reason,4,15,0.80078125,3.44921875,898,929,12,"Final Answer: FINAL: 13 Kekse
+
+"
+de_105,de,target_cot,reason,5,17,0.73583984375,1.8134765625,982,1051,31,🍷✨ #MathJokes #MathMystery #KekseConjecture 🌟 #CodyAndAmir #MathMagic
+de_105,de,target_cot,reason,6,3,0.6474609375,1.7109375,128,167,14,Cody isst dreimal mehr Kekse als Amir. 
+de_105,de,target_cot,reason,7,16,0.59326171875,3.44140625,929,982,16,"Therefore, both Cody and Amir together eat 13 Kekse. "
+de_105,de,target_cot,reason,8,4,0.491455078125,1.521484375,167,234,20,"Wenn Amir 5 Kekse isst, wie viele Kekse essen dann beide zusammen?
+"
+de_105,de,en_cot,reason,1,0,1.1708984375,3.203125,0,33,6,"You are a careful mathematician.
+"
+de_105,de,en_cot,reason,2,1,1.119140625,3.14453125,33,124,22,"Solve the problem step by step in English, then give the final answer as: FINAL: <number>
+
+"
+de_105,de,en_cot,reason,3,2,0.6376953125,1.0478515625,124,133,2,"Problem:
+"
+de_105,de,en_cot,reason,4,3,0.6123046875,1.65625,133,172,14,Cody isst dreimal mehr Kekse als Amir. 
+de_105,de,en_cot,reason,5,4,0.50341796875,1.8369140625,172,239,20,"Wenn Amir 5 Kekse isst, wie viele Kekse essen dann beide zusammen?
+"
+de_105,de,en_cot,reason,6,5,0.43017578125,1.97265625,239,282,13,"Step 1: Determine how many Kekse Cody eats
+"
+de_105,de,en_cot,reason,7,16,0.278564453125,1.0283203125,796,805,5,FINAL: 13
+de_105,de,en_cot,reason,8,15,0.2486572265625,0.845703125,772,796,10,"Final Answer: 13 Kekse
+
+"
+de_108,de,target_cot,reason,1,0,1.1708984375,3.203125,0,33,6,"You are a careful mathematician.
+"
+de_108,de,target_cot,reason,2,1,1.1689453125,3.154296875,33,119,22,"Solve the problem step by step in de, then give the final answer as: FINAL: <number>
+
+"
+de_108,de,target_cot,reason,3,2,0.97265625,1.0556640625,119,128,2,"Problem:
+"
+de_108,de,target_cot,reason,4,25,0.69677734375,2.3671875,1152,1180,11,"Final answer: **30** Kekse
+
+"
+de_108,de,target_cot,reason,5,8,0.59033203125,1.5654296875,491,515,5,"Step-by-step solution:
+
+"
+de_108,de,target_cot,reason,6,3,0.48974609375,1.2109375,128,183,17,Henry backt Kekse für einen regionalen Backwettbewerb. 
+de_108,de,target_cot,reason,7,4,0.446044921875,1.1220703125,183,235,14,Er möchte zweimal so viele backen wie letztes Jahr. 
+de_108,de,target_cot,reason,8,26,0.436767578125,2.103515625,1180,1212,12,"Henry last year had 30 Kekse. 
+
+"
+de_108,de,en_cot,reason,1,0,1.1708984375,3.203125,0,33,6,"You are a careful mathematician.
+"
+de_108,de,en_cot,reason,2,1,1.119140625,3.14453125,33,124,22,"Solve the problem step by step in English, then give the final answer as: FINAL: <number>
+
+"
+de_108,de,en_cot,reason,3,2,0.6376953125,1.0478515625,124,133,2,"Problem:
+"
+de_108,de,en_cot,reason,4,4,0.411376953125,1.109375,188,240,14,Er möchte zweimal so viele backen wie letztes Jahr. 
+de_108,de,en_cot,reason,5,6,0.3330078125,1.146484375,347,447,36,"Er lässt 5 seiner Kekse fallen, als er sie zum Kühlen rausstellt und hat jetzt insgesamt 110 Kekse. "
+de_108,de,en_cot,reason,6,5,0.3134765625,0.9443359375,240,347,34,"Als er mit dem Backen fertig ist, bemerkt er, dass er 15 Kekse mehr gebacken hat als er eigentlich wollte. "
+de_108,de,en_cot,reason,7,3,0.293212890625,0.6748046875,133,188,17,Henry backt Kekse für einen regionalen Backwettbewerb. 
+de_108,de,en_cot,reason,8,7,0.2783203125,1.0546875,447,496,14,"Wie viele Kekse hat Henry letztes Jahr gebacken?
+"
+de_11,de,target_cot,reason,1,0,1.1708984375,3.203125,0,33,6,"You are a careful mathematician.
+"
+de_11,de,target_cot,reason,2,1,1.1689453125,3.154296875,33,119,22,"Solve the problem step by step in de, then give the final answer as: FINAL: <number>
+
+"
+de_11,de,target_cot,reason,3,3,1.0517578125,3.58984375,128,197,23,Toula ging in die Bäckerei und kaufte verschiedene Arten von Gebäck. 
+de_11,de,target_cot,reason,4,2,0.97265625,1.0556640625,119,128,2,"Problem:
+"
+de_11,de,target_cot,reason,5,28,0.79052734375,3.91796875,1134,1159,9,Final Answer: FINAL: $694
+de_11,de,target_cot,reason,6,5,0.57177734375,1.634765625,385,418,9,"Wie hoch waren die Gesamtkosten?
+"
+de_11,de,target_cot,reason,7,7,0.345458984375,1.541015625,459,486,9,"Number of dozen donuts = 3
+"
+de_11,de,target_cot,reason,8,4,0.2298583984375,0.94189453125,197,385,72,"Sie kaufte 3 Dutzend Donuts, die 68 US-Dollar pro Dutzend kosten, 2 Dutzend Mini-Cupcakes, die 80 US-Dollar pro Dutzend kosten und 6 Dutzend Mini-Cheesecakes für 55 US-Dollar pro Dutzend. "
+de_11,de,en_cot,reason,1,0,1.1708984375,3.203125,0,33,6,"You are a careful mathematician.
+"
+de_11,de,en_cot,reason,2,1,1.119140625,3.14453125,33,124,22,"Solve the problem step by step in English, then give the final answer as: FINAL: <number>
+
+"
+de_11,de,en_cot,reason,3,3,1.091796875,3.548828125,133,202,23,Toula ging in die Bäckerei und kaufte verschiedene Arten von Gebäck. 
+de_11,de,en_cot,reason,4,20,0.99169921875,2.48046875,1252,1319,26,🍝✨ #MathJokes #MoneyMatters #CookieShop #Toula #Bakery #MathProblem
+de_11,de,en_cot,reason,5,7,0.81494140625,1.732421875,446,480,7,"Explanation for a five-year-old:
+
+"
+de_11,de,en_cot,reason,6,19,0.6455078125,2.65625,1205,1252,12,That's how much money she spent at the bakery! 
+de_11,de,en_cot,reason,7,2,0.6376953125,1.0478515625,124,133,2,"Problem:
+"
+de_11,de,en_cot,reason,8,8,0.63623046875,2.17578125,480,541,16,"Imagine you have a big cookie shop called ""Baker's Delight"". "

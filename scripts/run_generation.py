@@ -1,4 +1,5 @@
 
+import argparse
 import os
 import re
 import sys
@@ -51,10 +52,26 @@ def load_model(name: str, device: torch.device):
     return model, tok
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Generate CoT traces and answers for MGSM subset."
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional limit on number of rows from data/mgsm_subset.csv to process "
+             "(useful for quick smoke tests).",
+    )
+    args = parser.parse_args()
+
     cfg = Config()
     device = pick_device(cfg)
 
     df = pd.read_csv("data/mgsm_subset.csv")
+    if args.limit is not None:
+        df = df.head(args.limit).copy()
+        print(f"Using only first {len(df)} rows from mgsm_subset.csv for this run.")
+
     run_id = f"run_{int(time.time())}"
     out_dir = os.path.join("outputs", "runs", run_id)
     os.makedirs(out_dir, exist_ok=True)
@@ -79,19 +96,28 @@ def main():
                 ("base", (base_model, base_tok)),
                 ("reason", (reason_model, reason_tok)),
             ]:
-                text = generate(model, tok, device, prompt, cfg.max_new_tokens, cfg.temperature)
+                text = generate(
+                    model,
+                    tok,
+                    device,
+                    prompt,
+                    cfg.max_new_tokens,
+                    cfg.temperature,
+                )
                 pred = extract_final(text)
 
-                records.append({
-                    "id": row["id"],
-                    "lang": lang,
-                    "cond": cond,
-                    "model": model_tag,
-                    "gold": gold,
-                    "pred": pred,
-                    "correct": (pred == gold),
-                    "text": text,
-                })
+                records.append(
+                    {
+                        "id": row["id"],
+                        "lang": lang,
+                        "cond": cond,
+                        "model": model_tag,
+                        "gold": gold,
+                        "pred": pred,
+                        "correct": (pred == gold),
+                        "text": text,
+                    }
+                )
 
     out_path = os.path.join(out_dir, "generations.jsonl")
     with open(out_path, "w") as f:

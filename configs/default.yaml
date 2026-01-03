@@ -1,0 +1,26 @@
+seed: 42
+
+dataset:
+  name: juletxara/mgsm
+  languages: ["en", "es", "fr", "de"]
+  n_per_lang: 50
+
+models:
+  base: Qwen/Qwen2.5-0.5B
+  reason: Qwen/Qwen2.5-0.5B-Instruct
+
+generation:
+  max_new_tokens: 256
+  temperature: 0.2
+
+runtime:
+  device_preference: mps  # or "cuda" / "cpu"
+
+scaffold:
+  n_branches: 3
+  pivot_top_k: 1
+
+controls:
+  config_path: configs/controls.yaml
+
+

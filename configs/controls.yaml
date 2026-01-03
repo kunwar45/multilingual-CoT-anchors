@@ -1,0 +1,24 @@
+controls:
+  sentence_boundaries:
+    enabled: true
+    description: >
+      All pivot scoring operates on sentence spans (not raw token positions),
+      using character-level sentence boundaries from pysbd. This reduces
+      tokenizer/script artifacts.
+
+  paraphrase_within_language:
+    enabled: true
+    description: >
+      Within a language, generate paraphrased versions of reasoning traces
+      (different phrasing, same logical steps) and compare pivot locations
+      and scores to the originals.
+    sample_size: 20
+
+  backtranslation_optional:
+    enabled: false
+    description: >
+      Optional control: translate Target-CoT traces to English and back to the
+      target language (back-translation), then compare pivot scores and
+      accuracy. Enable only if you have capacity for extra model calls.
+
+
