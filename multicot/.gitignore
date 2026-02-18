@@ -1,18 +1,4 @@
-*.pkl
-*.json
-*.zip
-*.png
-*.npy
-*.pyc
-*.csv
-*.lock
-plots/*
-math-rollouts/
-math-rollouts_test/
-.cursorindexingignore
-.specstory
-
-# Python (from multicot/.gitignore)
+# Python
 __pycache__/
 *.py[cod]
 .venv/

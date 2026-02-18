@@ -1,0 +1,30 @@
+{
+  "model": {
+    "name": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+    "device": "auto",
+    "dtype": "bfloat16"
+  },
+  "generation": {
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "max_new_tokens": 1024,
+    "num_rollouts": 5,
+    "base_seed": 42
+  },
+  "api": {
+    "use_api": false,
+    "provider": null,
+    "base_url": null
+  },
+  "experiment": {
+    "languages": ["en"],
+    "conditions": ["native"],
+    "num_problems": 20
+  },
+  "analysis": {
+    "min_sentence_length": 10,
+    "top_k_candidates": 5,
+    "sensitivity_threshold": 0.3,
+    "num_importance_samples": 10
+  }
+}

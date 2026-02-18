@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/interp-reasoning/thought-anchors/multicot/configs/schema.json",
+  "title": "MultiCoT Experiment Configuration",
+  "description": "Configuration schema for MultiCoT multilingual chain-of-thought experiments",
+  "type": "object",
+  "properties": {
+    "config_name": {
+      "type": "string",
+      "description": "Unique identifier for this configuration"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the experiment"
+    },
+    "model": {
+      "type": "object",
+      "description": "Model configuration",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "HuggingFace model name or path"
+        },
+        "device": {
+          "type": "string",
+          "enum": ["auto", "cuda", "cpu", "mps"],
+          "default": "auto",
+          "description": "Device to run the model on"
+        },
+        "dtype": {
+          "type": "string",
+          "enum": ["float16", "bfloat16", "float32"],
+          "default": "bfloat16",
+          "description": "Model data type"
+        }
+      },
+      "required": ["name"]
+    },
+    "generation": {
+      "type": "object",
+      "description": "Generation parameters",
+      "properties": {
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "default": 0.7,
+          "description": "Sampling temperature"
+        },
+        "top_p": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.95,
+          "description": "Top-p (nucleus) sampling parameter"
+        },
+        "max_new_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1024,
+          "description": "Maximum number of tokens to generate"
+        },
+        "num_rollouts": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5,
+          "description": "Number of rollouts per problem"
+        },
+        "base_seed": {
+          "type": "integer",
+          "default": 42,
+          "description": "Base seed for reproducibility"
+        }
+      }
+    },
+    "api": {
+      "type": "object",
+      "description": "API configuration for external providers",
+      "properties": {
+        "use_api": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to use an API instead of local model"
+        },
+        "provider": {
+          "type": ["string", "null"],
+          "enum": ["openrouter", "together", "fireworks", null],
+          "description": "API provider name"
+        },
+        "base_url": {
+          "type": ["string", "null"],
+          "format": "uri",
+          "description": "Custom API base URL"
+        },
+        "key_env_var": {
+          "type": "string",
+          "default": "API_KEY",
+          "description": "Environment variable name for API key"
+        }
+      }
+    },
+    "experiment": {
+      "type": "object",
+      "description": "Experiment settings",
+      "properties": {
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["en", "es", "fr", "de", "ru", "zh", "ja", "th", "sw", "bn", "te"]
+          },
+          "default": ["en"],
+          "description": "Languages to include in the experiment"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["native", "english_baseline", "english_thinking", "translate_solve"]
+          },
+          "default": ["native"],
+          "description": "Language conditions to test"
+        },
+        "num_problems": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 250,
+          "default": 20,
+          "description": "Number of problems per language (max 250 for MGSM)"
+        },
+        "problem_ids": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "string"
+          },
+          "description": "Specific problem IDs to use (overrides num_problems)"
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "description": "Analysis parameters",
+      "properties": {
+        "min_sentence_length": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10,
+          "description": "Minimum character length for a valid sentence"
+        },
+        "top_k_candidates": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5,
+          "description": "Number of top candidate anchors to analyze"
+        },
+        "sensitivity_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.3,
+          "description": "Minimum sensitivity score to be a candidate"
+        },
+        "num_importance_samples": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10,
+          "description": "Number of resamples for importance computation"
+        }
+      }
+    }
+  },
+  "required": ["model", "experiment"]
+}

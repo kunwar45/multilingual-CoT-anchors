@@ -1,0 +1,8 @@
+{
+  "problem_id": "mmath_0",
+  "dataset": "mmath",
+  "language": "fr",
+  "question": "Chaque matin, Aya fait une promenade de $9$ kilomètres et s'arrête ensuite dans un café. Lorsqu'elle marche à une vitesse constante de $s$ kilomètres par heure, la promenade lui prend 4 heures, y compris $t$ minutes passées dans le café. Lorsqu'elle marche à $s+2$ kilomètres par heure, la promenade lui prend 2 heures et 24 minutes, y compris $t$ minutes passées dans le café. Supposons qu'Aya marche à $s+\\frac{1}{2}$ kilomètres par heure. Trouvez le nombre de minutes que prend la promenade, y compris les $t$ minutes passées dans le café.",
+  "gt_answer": "204",
+  "answer_type": "latex_boxed"
+}
