@@ -124,6 +124,25 @@ Now label each chunk with function tags and dependencies.
 # Language-specific instruction templates
 # ---------------------------------------------------------------------------
 
+# MMMLU: instruct model to reason then write "Answer: X"
+_MMMLU_SYSTEM_PROMPTS = {
+    "en": "Answer this multiple-choice question step by step. Write your final answer on a new line as 'Answer: <letter>' where <letter> is A, B, C, or D.",
+    "fr": "Répondez à cette question à choix multiples étape par étape. Écrivez votre réponse finale sur une nouvelle ligne sous la forme 'Réponse: <lettre>' où <lettre> est A, B, C ou D.",
+    "zh": "请逐步回答这道多项选择题。在新的一行写出你的最终答案，格式为\u201c答案：<字母>\u201d，其中字母为A、B、C或D之一。",
+    "ar": "أجب على هذا السؤال متعدد الخيارات خطوة بخطوة. اكتب إجابتك النهائية في سطر جديد بالشكل 'الإجابة: <حرف>' حيث يكون الحرف A أو B أو C أو D.",
+    "de": "Beantworte diese Multiple-Choice-Frage Schritt für Schritt. Schreibe deine endgültige Antwort auf eine neue Zeile als 'Antwort: <Buchstabe>', wobei <Buchstabe> A, B, C oder D ist.",
+    "es": "Responde esta pregunta de opción múltiple paso a paso. Escribe tu respuesta final en una nueva línea como 'Respuesta: <letra>' donde <letra> es A, B, C o D.",
+    "hi": "इस बहुविकल्पीय प्रश्न का उत्तर चरण-दर-चरण दें। अपना अंतिम उत्तर एक नई पंक्ति पर 'उत्तर: <अक्षर>' के रूप में लिखें जहाँ <अक्षर> A, B, C या D है।",
+    "bn": "এই বহু-নির্বাচনী প্রশ্নটি ধাপে ধাপে উত্তর দিন। আপনার চূড়ান্ত উত্তর একটি নতুন লাইনে 'উত্তর: <অক্ষর>' হিসেবে লিখুন যেখানে <অক্ষর> হল A, B, C বা D।",
+    "id": "Jawab pertanyaan pilihan ganda ini langkah demi langkah. Tulis jawaban akhir Anda pada baris baru sebagai 'Jawaban: <huruf>' di mana <huruf> adalah A, B, C, atau D.",
+    "it": "Rispondi a questa domanda a scelta multipla passo dopo passo. Scrivi la tua risposta finale su una nuova riga come 'Risposta: <lettera>' dove <lettera> è A, B, C o D.",
+    "ja": "この多肢選択問題に段階的に答えてください。最終的な答えを新しい行に「答え：<文字>」の形式で書いてください（<文字>はA、B、C、またはDです）。",
+    "ko": "이 객관식 문제에 단계별로 답하세요. 최종 답을 새 줄에 '정답: <글자>' 형식으로 적으세요. 여기서 <글자>는 A, B, C 또는 D입니다.",
+    "pt": "Responda a esta questão de múltipla escolha passo a passo. Escreva sua resposta final em uma nova linha como 'Resposta: <letra>' onde <letra> é A, B, C ou D.",
+    "sw": "Jibu swali hili la chaguo nyingi hatua kwa hatua. Andika jibu lako la mwisho kwenye mstari mpya kama 'Jibu: <herufi>' ambapo <herufi> ni A, B, C, au D.",
+    "yo": "Answer this multiple-choice question step by step. Write your final answer on a new line as 'Answer: <letter>' where <letter> is A, B, C, or D.",
+}
+
 # MMATH: instruct model to use \boxed{} for answer
 _MMATH_SYSTEM_PROMPTS = {
     "en": "Solve this math problem step by step. You MUST put your final answer in \\boxed{{}}.",
@@ -154,6 +173,8 @@ def build_base_solution_prompt(problem: Problem, language: str) -> str:
     """
     if problem.answer_type == "latex_boxed":
         system = _MMATH_SYSTEM_PROMPTS.get(language, _MMATH_SYSTEM_PROMPTS["en"])
+    elif problem.answer_type == "multiple_choice":
+        system = _MMMLU_SYSTEM_PROMPTS.get(language, _MMMLU_SYSTEM_PROMPTS["en"])
     else:
         system = _MGSM_SYSTEM_PROMPTS.get(language, _MGSM_SYSTEM_PROMPTS["en"])
 
@@ -181,6 +202,8 @@ def build_rollout_prompt(
     """
     if problem.answer_type == "latex_boxed":
         system = _MMATH_SYSTEM_PROMPTS.get(language, _MMATH_SYSTEM_PROMPTS["en"])
+    elif problem.answer_type == "multiple_choice":
+        system = _MMMLU_SYSTEM_PROMPTS.get(language, _MMMLU_SYSTEM_PROMPTS["en"])
     else:
         system = _MGSM_SYSTEM_PROMPTS.get(language, _MGSM_SYSTEM_PROMPTS["en"])
 
@@ -189,8 +212,10 @@ def build_rollout_prompt(
     if rollout_type == "forced_answer":
         if problem.answer_type == "latex_boxed":
             prompt += "\n</think>\n\nTherefore, the final answers is \\boxed{"
+        elif problem.answer_type == "multiple_choice":
+            prompt += "\n</think>\n\nAnswer: "
         else:
-            # For MGSM, force a "Final:" marker
+            # For MGSM, force a language-specific "Final:" marker
             if language == "zh":
                 prompt += "\n</think>\n\n最终答案："
             elif language == "ar":

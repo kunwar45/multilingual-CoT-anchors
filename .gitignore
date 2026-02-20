@@ -9,6 +9,8 @@
 plots/*
 math-rollouts/
 math-rollouts_test/
+.claude/
+local/
 .cursorindexingignore
 .specstory
 

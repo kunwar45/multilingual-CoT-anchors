@@ -6,6 +6,7 @@ problem IDs and a unified Problem dataclass.
 """
 
 import json
+import os
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
@@ -13,13 +14,55 @@ from typing import Optional
 from datasets import load_dataset
 
 
-SUPPORTED_LANGUAGES = ["en", "fr", "zh", "ar"]
+def _hf_token():
+    """Hugging Face token from HF_TOKEN or HUGGING_FACE_HUB_TOKEN (e.g. from .env)."""
+    return os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN") or True
+
+
+def _load_dataset_from_hub(path: str, name: Optional[str], split: str, cache_dir: Optional[str], token, **kwargs):
+    """Load dataset from Hugging Face; if cache is missing the config, download from Hub."""
+    try:
+        return load_dataset(
+            path,
+            name,
+            split=split,
+            cache_dir=cache_dir,
+            token=token,
+            **kwargs,
+        )
+    except ValueError as e:
+        if "Couldn't find cache" in str(e) and "Available configs" in str(e):
+            # Cache exists for other configs but not this one — download from Hub
+            return load_dataset(
+                path,
+                name,
+                split=split,
+                cache_dir=cache_dir,
+                token=token,
+                download_mode="force_redownload",
+                **kwargs,
+            )
+        raise
+
+
+SUPPORTED_LANGUAGES = ["en", "fr", "zh", "ar", "de", "es", "hi", "bn", "id", "it", "ja", "ko", "pt", "sw", "yo"]
 
 LANGUAGE_NAMES = {
     "en": "English",
     "fr": "French",
     "zh": "Chinese",
     "ar": "Arabic",
+    "de": "German",
+    "es": "Spanish",
+    "hi": "Hindi",
+    "bn": "Bengali",
+    "id": "Indonesian",
+    "it": "Italian",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "pt": "Portuguese",
+    "sw": "Swahili",
+    "yo": "Yoruba",
 }
 
 
@@ -68,11 +111,12 @@ class MGSMLoader:
         if language in self._cache:
             return self._cache[language]
 
-        dataset = load_dataset(
+        dataset = _load_dataset_from_hub(
             "juletxara/mgsm",
             language,
             split="test",
             cache_dir=str(self.cache_dir) if self.cache_dir else None,
+            token=_hf_token(),
         )
 
         problems = []
@@ -214,6 +258,109 @@ class MMATHLoader:
         return all_problems
 
 
+class MMMMLULoader:
+    """
+    Loader for the MMMLU dataset (openai/MMMLU on HuggingFace).
+
+    14,042 multiple-choice questions from MMLU, professionally translated into
+    14 languages. Cross-language alignment is by row index (all configs share
+    the same fixed ordering of MMLU problems).
+
+    Languages: ar, bn, de, es, fr, hi, id, it, ja, ko, pt, sw, yo, zh
+    English is the source language of MMLU and has no translated config;
+    use --dataset mgsm or mmath for English experiments.
+    """
+
+    # Map our 2-letter codes to the HuggingFace config names
+    LANG_TO_CONFIG = {
+        "ar": "AR_XY",
+        "bn": "BN_BD",
+        "de": "DE_DE",
+        "es": "ES_LA",
+        "fr": "FR_FR",
+        "hi": "HI_IN",
+        "id": "ID_ID",
+        "it": "IT_IT",
+        "ja": "JA_JP",
+        "ko": "KO_KR",
+        "pt": "PT_BR",
+        "sw": "SW_KE",
+        "yo": "YO_NG",
+        "zh": "ZH_CN",
+    }
+
+    def __init__(self, cache_dir: Optional[Path] = None):
+        self.cache_dir = cache_dir
+        self._cache: dict[str, list[Problem]] = {}
+
+    def load_language(self, language: str) -> list[Problem]:
+        """Load all MMMLU problems for a specific language."""
+        if language not in self.LANG_TO_CONFIG:
+            raise ValueError(
+                f"Language '{language}' not available in MMMLU. "
+                f"Available: {sorted(self.LANG_TO_CONFIG.keys())}"
+            )
+
+        if language in self._cache:
+            return self._cache[language]
+
+        config = self.LANG_TO_CONFIG[language]
+        dataset = _load_dataset_from_hub(
+            "openai/MMMLU",
+            config,
+            split="test",
+            cache_dir=str(self.cache_dir) if self.cache_dir else None,
+            token=_hf_token(),
+        )
+
+        problems = []
+        for idx, row in enumerate(dataset):
+            # Bake the four options into the question text — standard MMLU format
+            question = (
+                f"{row['Question']}\n\n"
+                f"A. {row['A']}\n"
+                f"B. {row['B']}\n"
+                f"C. {row['C']}\n"
+                f"D. {row['D']}"
+            )
+            problem = Problem(
+                problem_id=f"mmmlu_{idx:05d}",
+                dataset="mmmlu",
+                language=language,
+                question=question,
+                gt_answer=str(row["Answer"]).strip().upper(),
+                answer_type="multiple_choice",
+            )
+            problems.append(problem)
+
+        self._cache[language] = problems
+        return problems
+
+    def load_parallel(
+        self,
+        languages: list[str],
+        problem_ids: Optional[list[str]] = None,
+    ) -> dict[str, dict[str, Problem]]:
+        """
+        Load problems across multiple languages.
+
+        Returns:
+            Nested dict: {problem_id: {language: Problem}}
+        """
+        all_problems = {}
+        for lang in languages:
+            for p in self.load_language(lang):
+                all_problems.setdefault(p.problem_id, {})[lang] = p
+
+        if problem_ids is not None:
+            all_problems = {
+                pid: langs for pid, langs in all_problems.items()
+                if pid in problem_ids
+            }
+
+        return all_problems
+
+
 def load_dataset_problems(
     dataset: str,
     languages: list[str],
@@ -227,7 +374,7 @@ def load_dataset_problems(
     Returns only problems available in ALL requested languages.
 
     Args:
-        dataset: "mgsm" or "mmath"
+        dataset: "mgsm", "mmath", or "mmmlu"
         languages: List of language codes
         num_problems: Optional limit on number of problems
         data_dir: Path to MMATH data directory (required for mmath)
@@ -242,8 +389,10 @@ def load_dataset_problems(
         if data_dir is None:
             raise ValueError("--data_dir is required for MMATH dataset")
         loader = MMATHLoader(data_dir=Path(data_dir))
+    elif dataset == "mmmlu":
+        loader = MMMMLULoader()
     else:
-        raise ValueError(f"Unknown dataset: {dataset}. Use 'mgsm' or 'mmath'.")
+        raise ValueError(f"Unknown dataset: {dataset}. Use 'mgsm', 'mmath', or 'mmmlu'.")
 
     parallel = loader.load_parallel(languages, problem_ids=problem_ids)
 

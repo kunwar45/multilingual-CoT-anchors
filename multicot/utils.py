@@ -2,16 +2,18 @@
 Core Utilities for Multilingual CoT Experiments
 
 Includes:
-- Language-specific sentence chunking (en, fr, zh, ar)
 - GlotLID language verification
 - Unified answer extraction and checking (numeric + LaTeX)
 - LaTeX normalization utilities (copied from root utils.py)
+
+Chunking is handled by multicot.chunker.
 """
 
 import re
 from typing import List, Optional, Tuple
 
 from multicot.data_loaders import Problem
+from multicot.chunker import split_solution_into_chunks  # re-exported for callers
 
 
 # ---------------------------------------------------------------------------
@@ -242,16 +244,70 @@ def normalize_number(s: str) -> Optional[float]:
 # Unified answer extraction and checking
 # ---------------------------------------------------------------------------
 
+def extract_multiple_choice_answer(text: str) -> str:
+    """
+    Extract the chosen letter (A/B/C/D) from a multiple-choice solution.
+
+    Tries, in order:
+    1. Language-specific "Answer: X" marker patterns
+    2. \\boxed{X} where X is a letter
+    3. Last line that is a bare letter
+    4. Last standalone A/B/C/D in the final 200 chars
+    """
+    # Multilingual "answer label: X" patterns (markdown bold stripped via \**)
+    answer_patterns = [
+        r"[Aa]nswer\s*[:：]\s*\**([ABCD])\**",
+        r"[Rr][eé]ponse\s*[:：]\s*\**([ABCD])\**",
+        r"答案\s*[:：]\s*\**([ABCD])\**",
+        r"الإجابة\s*[:：]\s*\**([ABCD])\**",
+        r"[Aa]ntwort\s*[:：]\s*\**([ABCD])\**",
+        r"[Rr]espuesta\s*[:：]\s*\**([ABCD])\**",
+        r"उत्तर\s*[:：]\s*\**([ABCD])\**",
+        r"উত্তর\s*[:：]\s*\**([ABCD])\**",
+        r"[Jj]awaban\s*[:：]\s*\**([ABCD])\**",
+        r"[Rr]isposta\s*[:：]\s*\**([ABCD])\**",
+        r"答え\s*[:：]\s*\**([ABCD])\**",
+        r"정답\s*[:：]\s*\**([ABCD])\**",
+        r"[Rr]esposta\s*[:：]\s*\**([ABCD])\**",
+        r"[Jj]ibu\s*[:：]\s*\**([ABCD])\**",
+    ]
+    for pattern in answer_patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1).upper()
+
+    # \boxed{A} style
+    boxed = re.search(r"\\boxed\{([ABCD])\}", text)
+    if boxed:
+        return boxed.group(1).upper()
+
+    # Last line that is just a bare letter (possibly bold)
+    for line in reversed(text.strip().split("\n")):
+        stripped = line.strip().strip("*").strip()
+        if stripped in ("A", "B", "C", "D"):
+            return stripped
+
+    # Last standalone letter in the final 200 chars
+    tail_matches = list(re.finditer(r"\b([ABCD])\b", text[-200:]))
+    if tail_matches:
+        return tail_matches[-1].group(1).upper()
+
+    return ""
+
+
 def extract_answer(text: str, problem: Problem, language: str) -> str:
     """
     Extract answer from generated text based on dataset type.
 
     MMATH: extract from \\boxed{}
     MGSM: parse Final: <number> with multilingual markers
+    MMMLU: extract multiple-choice letter (A/B/C/D)
     """
     if problem.answer_type == "latex_boxed":
         answers = extract_boxed_answers(text)
         return answers[0] if answers and answers[0] else ""
+    elif problem.answer_type == "multiple_choice":
+        return extract_multiple_choice_answer(text)
     else:  # numeric
         answer = parse_final_answer(text, language)
         if answer is None:
@@ -270,11 +326,14 @@ def check_answer_for_problem(predicted: str, problem: Problem) -> bool:
 
     numeric: float comparison with tolerance 1e-6
     latex_boxed: normalize_latex + sympy equivalence
+    multiple_choice: exact letter match (case-insensitive)
     """
     if not predicted:
         return False
 
-    if problem.answer_type == "numeric":
+    if problem.answer_type == "multiple_choice":
+        return predicted.strip().upper() == problem.gt_answer.strip().upper()
+    elif problem.answer_type == "numeric":
         pred_num = normalize_number(predicted)
         gt_num = normalize_number(problem.gt_answer)
         if pred_num is not None and gt_num is not None:
@@ -282,223 +341,6 @@ def check_answer_for_problem(predicted: str, problem: Problem) -> bool:
         return predicted.strip() == problem.gt_answer.strip()
     else:  # latex_boxed
         return check_answer_latex(predicted, problem.gt_answer)
-
-
-# ---------------------------------------------------------------------------
-# Language-specific sentence chunking
-# ---------------------------------------------------------------------------
-
-def _is_inside_latex(text: str, pos: int) -> bool:
-    """Check if position is inside a LaTeX delimiter ($...$, \\(...\\))."""
-    # Check $...$ (inline math)
-    dollar_count = text[:pos].count("$") - text[:pos].count("\\$")
-    if dollar_count % 2 == 1:
-        return True
-
-    # Check \(...\)
-    open_paren = len(re.findall(r"\\\(", text[:pos]))
-    close_paren = len(re.findall(r"\\\)", text[:pos]))
-    if open_paren > close_paren:
-        return True
-
-    return False
-
-
-def _split_en_fr(solution_text: str) -> List[str]:
-    """Split English/French text into chunks (same logic as root utils.py)."""
-    sentence_ending_tokens = [".", "?", "!"]
-    paragraph_ending_patterns = ["\n\n", "\r\n\r\n"]
-
-    chunks = []
-    current_chunk = ""
-
-    i = 0
-    while i < len(solution_text):
-        current_chunk += solution_text[i]
-
-        is_paragraph_end = False
-        for pattern in paragraph_ending_patterns:
-            if (
-                i + len(pattern) <= len(solution_text)
-                and solution_text[i : i + len(pattern)] == pattern
-            ):
-                is_paragraph_end = True
-                break
-
-        is_sentence_end = False
-        if i < len(solution_text) - 1 and solution_text[i] in sentence_ending_tokens:
-            next_char = solution_text[i + 1]
-            if (next_char == " " or next_char == "\n") and not _is_inside_latex(solution_text, i):
-                is_sentence_end = True
-
-        if is_paragraph_end or is_sentence_end:
-            if current_chunk.strip():
-                chunks.append(current_chunk.strip())
-                current_chunk = ""
-
-        i += 1
-
-    # Merge small chunks (less than 10 characters)
-    i = 0
-    while i < len(chunks):
-        if len(chunks[i]) < 10:
-            if i == len(chunks) - 1:
-                if i > 0:
-                    chunks[i - 1] = chunks[i - 1] + " " + chunks[i]
-                    chunks.pop(i)
-            else:
-                chunks[i + 1] = chunks[i] + " " + chunks[i + 1]
-                chunks.pop(i)
-            if i == 0 and len(chunks) == 1:
-                break
-        else:
-            i += 1
-
-    return chunks
-
-
-def _split_zh(solution_text: str) -> List[str]:
-    """Split Chinese text into chunks. Splits on 。！？ and .?! for mixed text."""
-    sentence_endings = ["。", "！", "？", ".", "?", "!"]
-    paragraph_ending_patterns = ["\n\n", "\r\n\r\n"]
-
-    chunks = []
-    current_chunk = ""
-
-    i = 0
-    while i < len(solution_text):
-        current_chunk += solution_text[i]
-
-        is_paragraph_end = False
-        for pattern in paragraph_ending_patterns:
-            if (
-                i + len(pattern) <= len(solution_text)
-                and solution_text[i : i + len(pattern)] == pattern
-            ):
-                is_paragraph_end = True
-                break
-
-        is_sentence_end = False
-        if solution_text[i] in sentence_endings and not _is_inside_latex(solution_text, i):
-            # For CJK punctuation, split immediately after
-            if solution_text[i] in ["。", "！", "？"]:
-                is_sentence_end = True
-            # For ASCII punctuation, require space/newline after (like en/fr)
-            elif i < len(solution_text) - 1:
-                next_char = solution_text[i + 1]
-                if next_char == " " or next_char == "\n":
-                    is_sentence_end = True
-
-        if is_paragraph_end or is_sentence_end:
-            if current_chunk.strip():
-                chunks.append(current_chunk.strip())
-                current_chunk = ""
-
-        i += 1
-
-    # Merge small chunks (less than 6 characters for Chinese)
-    i = 0
-    while i < len(chunks):
-        if len(chunks[i]) < 6:
-            if i == len(chunks) - 1:
-                if i > 0:
-                    chunks[i - 1] = chunks[i - 1] + " " + chunks[i]
-                    chunks.pop(i)
-            else:
-                chunks[i + 1] = chunks[i] + " " + chunks[i + 1]
-                chunks.pop(i)
-            if i == 0 and len(chunks) == 1:
-                break
-        else:
-            i += 1
-
-    return chunks
-
-
-def _split_ar(solution_text: str) -> List[str]:
-    """Split Arabic text into chunks. Splits on .?!؟"""
-    sentence_endings = [".", "?", "!", "؟"]
-    paragraph_ending_patterns = ["\n\n", "\r\n\r\n"]
-
-    chunks = []
-    current_chunk = ""
-
-    i = 0
-    while i < len(solution_text):
-        current_chunk += solution_text[i]
-
-        is_paragraph_end = False
-        for pattern in paragraph_ending_patterns:
-            if (
-                i + len(pattern) <= len(solution_text)
-                and solution_text[i : i + len(pattern)] == pattern
-            ):
-                is_paragraph_end = True
-                break
-
-        is_sentence_end = False
-        if solution_text[i] in sentence_endings and not _is_inside_latex(solution_text, i):
-            # Arabic question mark splits immediately
-            if solution_text[i] == "؟":
-                is_sentence_end = True
-            elif i < len(solution_text) - 1:
-                next_char = solution_text[i + 1]
-                if next_char == " " or next_char == "\n":
-                    is_sentence_end = True
-
-        if is_paragraph_end or is_sentence_end:
-            if current_chunk.strip():
-                chunks.append(current_chunk.strip())
-                current_chunk = ""
-
-        i += 1
-
-    # Merge small chunks (less than 8 characters for Arabic)
-    i = 0
-    while i < len(chunks):
-        if len(chunks[i]) < 8:
-            if i == len(chunks) - 1:
-                if i > 0:
-                    chunks[i - 1] = chunks[i - 1] + " " + chunks[i]
-                    chunks.pop(i)
-            else:
-                chunks[i + 1] = chunks[i] + " " + chunks[i + 1]
-                chunks.pop(i)
-            if i == 0 and len(chunks) == 1:
-                break
-        else:
-            i += 1
-
-    return chunks
-
-
-def split_solution_into_chunks(solution_text: str, language: str = "en") -> List[str]:
-    """
-    Split a solution into chunks for rollout generation.
-    Dispatches to language-specific splitter.
-
-    Args:
-        solution_text: The full solution text
-        language: Language code ("en", "fr", "zh", "ar")
-
-    Returns:
-        List of chunk strings
-    """
-    # Strip think tags if present
-    if "<think>" in solution_text:
-        solution_text = solution_text.split("<think>")[1].strip()
-    if "</think>" in solution_text:
-        solution_text = solution_text.split("</think>")[0].strip()
-
-    if language in ("en", "fr"):
-        return _split_en_fr(solution_text)
-    elif language == "zh":
-        return _split_zh(solution_text)
-    elif language == "ar":
-        return _split_ar(solution_text)
-    else:
-        # Default to English splitting for unknown languages
-        return _split_en_fr(solution_text)
 
 
 # ---------------------------------------------------------------------------
@@ -515,7 +357,37 @@ GLOTLID_TO_LANG = {
     "cmn": "zh", "cmn_Hans": "zh", "cmn_Hant": "zh",
     "arb": "ar", "arb_Arab": "ar",
     "ara": "ar", "ara_Arab": "ar",
+    # MMMLU languages
+    "deu": "de", "deu_Latn": "de",
+    "spa": "es", "spa_Latn": "es",
+    "hin": "hi", "hin_Deva": "hi",
+    "ben": "bn", "ben_Beng": "bn",
+    "ind": "id", "ind_Latn": "id",
+    "ita": "it", "ita_Latn": "it",
+    "jpn": "ja", "jpn_Jpan": "ja",
+    "kor": "ko", "kor_Hang": "ko",
+    "por": "pt", "por_Latn": "pt",
+    "swh": "sw", "swh_Latn": "sw",
+    "swa": "sw", "swa_Latn": "sw",
+    "yor": "yo", "yor_Latn": "yo",
 }
+
+
+def _apply_numpy2_compat():
+    """Work around NumPy 2.x: libraries (e.g. fasttext) using np.array(..., copy=False) can raise
+    'Unable to avoid copy while creating an array'. Use np.asarray when copy=False."""
+    import numpy as np
+    if getattr(np, "_glotlid_numpy2_patched", False):
+        return
+    _orig = np.array
+
+    def _array(obj, dtype=None, copy=None, order="K", subok=False, ndmin=0):
+        if copy is False:
+            return np.asarray(obj, dtype=dtype, order=order)
+        return _orig(obj, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin)
+
+    np.array = _array
+    np._glotlid_numpy2_patched = True
 
 
 def load_glotlid_model():
@@ -524,6 +396,7 @@ def load_glotlid_model():
     if _glotlid_model is not None:
         return _glotlid_model
 
+    _apply_numpy2_compat()
     import fasttext
     from huggingface_hub import hf_hub_download
 

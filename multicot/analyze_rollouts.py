@@ -33,6 +33,10 @@ from multicot.prompts import build_dag_labeling_prompt
 # Load environment variables
 load_dotenv()
 
+# Use HF token from .env (HF_TOKEN) for dataset downloads
+if os.getenv("HF_TOKEN"):
+    os.environ.setdefault("HUGGING_FACE_HUB_TOKEN", os.environ["HF_TOKEN"])
+
 # Set tokenizers parallelism to false to avoid deadlocks
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
