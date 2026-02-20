@@ -61,7 +61,10 @@ LANGUAGE_NAMES = {
     "ja": "Japanese",
     "ko": "Korean",
     "pt": "Portuguese",
+    "ru": "Russian",
     "sw": "Swahili",
+    "te": "Telugu",
+    "th": "Thai",
     "yo": "Yoruba",
 }
 
