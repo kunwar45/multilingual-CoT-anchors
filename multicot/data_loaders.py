@@ -108,7 +108,9 @@ class MGSMLoader:
         if language not in self.MGSM_LANGUAGES:
             raise ValueError(
                 f"Language '{language}' not available in MGSM. "
-                f"Available: {self.MGSM_LANGUAGES}"
+                f"Available: {self.MGSM_LANGUAGES}\n"
+                f"Note: Arabic (ar) is not in MGSM. Use MMMLU for Arabic, "
+                f"or restrict MGSM to: en, fr, zh, de, es, ru, ja, th, sw, bn, te"
             )
 
         if language in self._cache:

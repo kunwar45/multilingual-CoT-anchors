@@ -57,7 +57,7 @@ IMPORTANCE_METRICS = [
 # ---------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser(description="Analyze multilingual rollout data")
-parser.add_argument("--dataset", type=str, required=True, choices=["mgsm", "mmath"],
+parser.add_argument("--dataset", type=str, required=True, choices=["mgsm", "mmath", "mmmlu"],
                     help="Dataset to analyze")
 parser.add_argument("--languages", type=str, default="en,fr,zh,ar",
                     help="Comma-separated language codes")
@@ -110,8 +110,15 @@ parser.add_argument("--max_problems", type=int, default=None,
 
 args = parser.parse_args()
 
-# Set up OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Set up OpenAI client lazily so the module can be imported without OPENAI_API_KEY
+_client = None
+
+
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _client
 
 
 # ---------------------------------------------------------------------------
@@ -594,7 +601,7 @@ def label_chunks_with_dag(problem_text: str, chunks: List[str], language: str) -
     formatted_prompt = build_dag_labeling_prompt(problem_text, chunks, language)
 
     try:
-        response = client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": formatted_prompt}],
             temperature=0.0,
@@ -617,7 +624,7 @@ def generate_chunk_summary(chunk_text: str) -> str:
     Summary (2-4 words max):
     """
     try:
-        response = client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
@@ -643,7 +650,7 @@ def generate_problem_nickname(problem_text: str) -> str:
     Nickname (2-4 words max):
     """
     try:
-        response = client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
