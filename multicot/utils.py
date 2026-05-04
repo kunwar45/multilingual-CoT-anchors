@@ -157,6 +157,11 @@ FINAL_MARKERS = {
         "الجواب النهائي:", "الجواب:",
         "النتيجة:",
     ],
+    "ru": ["Final:", "final:", "FINAL:", "Ответ:", "Итог:", "Результат:"],
+    "ms": ["Final:", "final:", "FINAL:", "Jawapan:", "jawapan:"],
+    "vi": ["Final:", "final:", "FINAL:", "Đáp án:", "đáp án:", "Kết quả:"],
+    "te": ["Final:", "final:", "FINAL:", "సమాధానం:"],
+    "th": ["Final:", "final:", "FINAL:", "คำตอบ:", "ผลลัพธ์:"],
 }
 
 ALL_FINAL_MARKERS = set()
@@ -302,12 +307,20 @@ def extract_answer(text: str, problem: Problem, language: str) -> str:
     MMATH: extract from \\boxed{}
     MGSM: parse Final: <number> with multilingual markers
     MMMLU: extract multiple-choice letter (A/B/C/D)
+    PolyMath (open_math): try \\boxed{} first, then Final: markers
     """
     if problem.answer_type == "latex_boxed":
         answers = extract_boxed_answers(text)
         return answers[0] if answers and answers[0] else ""
     elif problem.answer_type == "multiple_choice":
         return extract_multiple_choice_answer(text)
+    elif problem.answer_type == "open_math":
+        # Try \boxed{} first (models prompted to box their answer), then Final: markers
+        answers = extract_boxed_answers(text)
+        if answers and answers[0]:
+            return answers[0]
+        answer = parse_final_answer(text, language)
+        return answer if answer is not None else ""
     else:  # numeric
         answer = parse_final_answer(text, language)
         if answer is None:
@@ -327,6 +340,7 @@ def check_answer_for_problem(predicted: str, problem: Problem) -> bool:
     numeric: float comparison with tolerance 1e-6
     latex_boxed: normalize_latex + sympy equivalence
     multiple_choice: exact letter match (case-insensitive)
+    open_math (PolyMath): numeric → LaTeX equivalence → normalized string
     """
     if not predicted:
         return False
@@ -339,6 +353,16 @@ def check_answer_for_problem(predicted: str, problem: Problem) -> bool:
         if pred_num is not None and gt_num is not None:
             return abs(pred_num - gt_num) < 1e-6
         return predicted.strip() == problem.gt_answer.strip()
+    elif problem.answer_type == "open_math":
+        # Try numeric comparison first (most PolyMath answers are numbers)
+        pred_num = normalize_number(predicted)
+        gt_num = normalize_number(problem.gt_answer)
+        if pred_num is not None and gt_num is not None:
+            return abs(pred_num - gt_num) < 1e-6
+        # Fall back to LaTeX equivalence then normalized string match
+        if check_answer_latex(predicted, problem.gt_answer):
+            return True
+        return normalize_latex(predicted) == normalize_latex(problem.gt_answer)
     else:  # latex_boxed
         return check_answer_latex(predicted, problem.gt_answer)
 
@@ -370,6 +394,12 @@ GLOTLID_TO_LANG = {
     "swh": "sw", "swh_Latn": "sw",
     "swa": "sw", "swa_Latn": "sw",
     "yor": "yo", "yor_Latn": "yo",
+    # PolyMath additional languages
+    "rus": "ru", "rus_Cyrl": "ru",
+    "msa": "ms", "msa_Latn": "ms", "zsm": "ms", "zsm_Latn": "ms",
+    "vie": "vi", "vie_Latn": "vi",
+    "tel": "te", "tel_Telu": "te",
+    "tha": "th", "tha_Thai": "th",
 }
 
 

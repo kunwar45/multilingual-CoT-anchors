@@ -37,6 +37,11 @@ load_dotenv()
 if os.getenv("HF_TOKEN"):
     os.environ.setdefault("HUGGING_FACE_HUB_TOKEN", os.environ["HF_TOKEN"])
 
+# Labeler endpoint — defaults to OpenAI; set LABELER_BASE_URL to use Together or any
+# OpenAI-compatible server (e.g. https://api.together.xyz/v1).
+LABELER_BASE_URL = os.getenv("LABELER_BASE_URL", "")
+LABELER_API_KEY = os.getenv("LABELER_API_KEY") or os.getenv("OPENAI_API_KEY", "")
+
 # Set tokenizers parallelism to false to avoid deadlocks
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -57,7 +62,7 @@ IMPORTANCE_METRICS = [
 # ---------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser(description="Analyze multilingual rollout data")
-parser.add_argument("--dataset", type=str, required=True, choices=["mgsm", "mmath", "mmmlu"],
+parser.add_argument("--dataset", type=str, required=True, choices=["mgsm", "mmath", "mmmlu", "polymath"],
                     help="Dataset to analyze")
 parser.add_argument("--languages", type=str, default="en,fr,zh,ar",
                     help="Comma-separated language codes")
@@ -107,18 +112,48 @@ parser.add_argument("--absolute", action="store_true", default=False,
                     help="Use absolute value for importance")
 parser.add_argument("--max_problems", type=int, default=None,
                     help="Maximum number of problems to analyze")
+parser.add_argument("--labeler-model", type=str, default="gpt-4o",
+                    help="Model for chunk labeling. Set LABELER_BASE_URL + LABELER_API_KEY to "
+                         "use Together (e.g. Qwen/Qwen3-8B) or any OpenAI-compatible endpoint.")
 
 args = parser.parse_args()
 
-# Set up OpenAI client lazily so the module can be imported without OPENAI_API_KEY
+# Set up labeler client lazily so the module can be imported without any API key
 _client = None
 
 
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        kwargs: dict = {"api_key": LABELER_API_KEY or "no-key"}
+        if LABELER_BASE_URL:
+            kwargs["base_url"] = LABELER_BASE_URL
+        _client = OpenAI(**kwargs)
     return _client
+
+
+def _extract_json(text: str) -> dict:
+    """Parse JSON from a model response, with fallback for markdown code blocks."""
+    import re
+    if not text:
+        return {}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except json.JSONDecodeError:
+            pass
+    m = re.search(r"(\{.*\})", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except json.JSONDecodeError:
+            pass
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -597,25 +632,30 @@ def process_chunk_importance(
 # ---------------------------------------------------------------------------
 
 def label_chunks_with_dag(problem_text: str, chunks: List[str], language: str) -> Dict:
-    """Label all chunks using GPT-4o with the DAG prompt."""
+    """Label all chunks with the DAG prompt using the configured labeler model."""
     formatted_prompt = build_dag_labeling_prompt(problem_text, chunks, language)
+    model = args.labeler_model
+    # json_object mode is reliably supported by OpenAI models (no "/" in name).
+    # For Together/HF models rely on the prompt's JSON instructions + _extract_json.
+    use_json_mode = "/" not in model
 
     try:
-        response = _get_client().chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": formatted_prompt}],
-            temperature=0.0,
-            response_format={"type": "json_object"},
-        )
-        result = json.loads(response.choices[0].message.content)
-        return result
+        call_kwargs: dict = {
+            "model": model,
+            "messages": [{"role": "user", "content": formatted_prompt}],
+            "temperature": 0.0,
+        }
+        if use_json_mode:
+            call_kwargs["response_format"] = {"type": "json_object"}
+        response = _get_client().chat.completions.create(**call_kwargs)
+        return _extract_json(response.choices[0].message.content)
     except Exception as e:
         print(f"Error labeling chunks: {e}")
         return {}
 
 
 def generate_chunk_summary(chunk_text: str) -> str:
-    """Generate a 2-4 word summary of a chunk using GPT-4o-mini."""
+    """Generate a 2-4 word summary of a chunk using the configured labeler model."""
     prompt = f"""Please provide a 2-4 word maximum summary of what specifically happens in this text chunk. Focus on the concrete action or calculation.
 
     Text chunk:
@@ -625,7 +665,7 @@ def generate_chunk_summary(chunk_text: str) -> str:
     """
     try:
         response = _get_client().chat.completions.create(
-            model="gpt-4o-mini",
+            model=args.labeler_model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             max_tokens=20,
@@ -641,7 +681,7 @@ def generate_chunk_summary(chunk_text: str) -> str:
 
 
 def generate_problem_nickname(problem_text: str) -> str:
-    """Generate a 2-4 word nickname for a problem using GPT-4o-mini."""
+    """Generate a 2-4 word nickname for a problem using the configured labeler model."""
     prompt = f"""Please provide a 2-4 word maximum nickname for this math problem that captures its essence.
 
     Problem:
@@ -651,7 +691,7 @@ def generate_problem_nickname(problem_text: str) -> str:
     """
     try:
         response = _get_client().chat.completions.create(
-            model="gpt-4o-mini",
+            model=args.labeler_model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             max_tokens=20,
@@ -832,7 +872,7 @@ def analyze_problem(
     else:
         # Label with GPT-4o DAG prompt
         question = problem_data.get("question", problem_data.get("problem", ""))
-        print(f"Problem {problem_dir.name}: Labeling {len(chunks)} chunks with GPT-4o")
+        print(f"Problem {problem_dir.name}: Labeling {len(chunks)} chunks with {args.labeler_model}")
 
         dag_result = label_chunks_with_dag(question, chunks, language)
 

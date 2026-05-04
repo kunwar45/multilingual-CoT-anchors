@@ -29,7 +29,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # ---------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser(description="Cross-language chunk alignment via LaBSE")
-parser.add_argument("--dataset", type=str, required=True, choices=["mgsm", "mmath", "mmmlu"])
+parser.add_argument("--dataset", type=str, required=True, choices=["mgsm", "mmath", "mmmlu", "polymath"])
 parser.add_argument("--model", type=str, default="deepseek-r1-distill-qwen-14b")
 parser.add_argument("--temperature", type=float, default=0.6)
 parser.add_argument("--top_p", type=float, default=0.95)
@@ -45,6 +45,10 @@ parser.add_argument("--no_store_matrix", action="store_true", default=False,
                     help="Omit full similarity matrix from JSON (saves space)")
 parser.add_argument("--labse_model", type=str, default="LaBSE",
                     help="SentenceTransformer model name for cross-lingual embeddings")
+parser.add_argument("--aligner", type=str, default="labse",
+                    choices=["labse", "translate_en"],
+                    help="Alignment method: 'labse' embeds original text with LaBSE; "
+                         "'translate_en' translates both traces to English with GPT-4o first")
 
 args = parser.parse_args()
 
@@ -91,6 +95,48 @@ def embed_chunks(chunks: List[str]) -> np.ndarray:
     model = _get_labse()
     embs = model.encode(chunks, batch_size=32, show_progress_bar=False, normalize_embeddings=True)
     return embs.astype(np.float32)
+
+
+def translate_chunks_to_english(chunks: List[str], language: str) -> List[str]:
+    """
+    Translate a list of reasoning chunks to English using GPT-4o.
+
+    Mathematical notation and LaTeX are preserved unchanged.
+    Returns a copy of the input list if language is already 'en' or chunks is empty.
+    Falls back to the original text (with a warning) on API failure or count mismatch.
+    """
+    if language == "en" or not chunks:
+        return list(chunks)
+
+    from multicot.data_loaders import LANGUAGE_NAMES
+    lang_name = LANGUAGE_NAMES.get(language, language)
+
+    numbered = "\n".join(f"{i + 1}. {c}" for i, c in enumerate(chunks))
+    prompt = (
+        f"Translate each of the following mathematical reasoning steps from {lang_name} to English. "
+        f"Preserve all mathematical notation, LaTeX formulas, and variable names exactly as written. "
+        f'Reply with JSON in this format: {{"translations": ["<step 1 in English>", "<step 2 in English>", ...]}}\n\n'
+        f"{numbered}"
+    )
+
+    try:
+        client = _get_client()
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+        result = json.loads(resp.choices[0].message.content)
+        translated = result.get("translations", [])
+        if len(translated) != len(chunks):
+            print(f"  [warn] translate_en: got {len(translated)} translations for "
+                  f"{len(chunks)} chunks — falling back to originals")
+            return list(chunks)
+        return [str(t) for t in translated]
+    except Exception as e:
+        print(f"  [warn] translate_en: translation failed ({e}) — falling back to originals")
+        return list(chunks)
 
 
 def compute_similarity_matrix(embs1: np.ndarray, embs2: np.ndarray) -> np.ndarray:
@@ -260,6 +306,9 @@ def write_alignment_json(
     store_matrix: bool = True,
     problem_text: str = "",
     validate_n: int = 0,
+    translated1: Optional[List[str]] = None,
+    translated2: Optional[List[str]] = None,
+    aligner: str = "labse",
 ) -> Dict:
     """Build aligned_pairs, optionally validate, write JSON, and return data dict."""
     aligned_pairs = []
@@ -277,6 +326,11 @@ def write_alignment_json(
             "llm_valid": None,
             "llm_reasoning": None,
         }
+        # Include English translations when using translate_en aligner
+        if translated1 is not None:
+            pair["translated_lang1"] = translated1[i]
+        if translated2 is not None:
+            pair["translated_lang2"] = translated2[j]
         for m in IMPORTANCE_METRICS:
             pair[f"{m}_lang1"] = c1.get(m, None)
             pair[f"{m}_lang2"] = c2.get(m, None)
@@ -294,6 +348,7 @@ def write_alignment_json(
         "lang1": lang1,
         "lang2": lang2,
         "tau": tau,
+        "aligner": aligner,
         "n_chunks_lang1": len(chunks1),
         "n_chunks_lang2": len(chunks2),
         "n_aligned_pairs": len(aligned_pairs),
@@ -304,7 +359,8 @@ def write_alignment_json(
     if store_matrix:
         data["similarity_matrix"] = sim_matrix.tolist()
 
-    out_path = problem_dir_lang1 / f"alignment_{lang1}_{lang2}.json"
+    suffix = "" if aligner == "labse" else f"_{aligner}"
+    out_path = problem_dir_lang1 / f"alignment_{lang1}_{lang2}{suffix}.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
@@ -343,13 +399,18 @@ def align_problem(
     force: bool,
     store_matrix: bool = True,
     validate_n: int = 0,
+    aligner: str = "labse",
 ) -> Optional[Dict]:
     """
     Orchestrate embed → similarity matrix → DP alignment → write JSON.
 
+    aligner="labse"       — embed original text with LaBSE (default)
+    aligner="translate_en" — translate both traces to English with GPT-4o, then embed
+
     Returns the alignment data dict, or None on failure/skip.
     """
-    out_path = problem_dir_lang1 / f"alignment_{lang1}_{lang2}.json"
+    suffix = "" if aligner == "labse" else f"_{aligner}"
+    out_path = problem_dir_lang1 / f"alignment_{lang1}_{lang2}{suffix}.json"
     if out_path.exists() and not force:
         with open(out_path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -370,10 +431,17 @@ def align_problem(
     texts1 = [c.get("chunk", "") for c in chunks1]
     texts2 = [c.get("chunk", "") for c in chunks2]
 
-    embs1 = embed_chunks(texts1)
-    embs2 = embed_chunks(texts2)
-    sim_matrix = compute_similarity_matrix(embs1, embs2)
+    if aligner == "translate_en":
+        translated1 = translate_chunks_to_english(texts1, lang1)
+        translated2 = translate_chunks_to_english(texts2, lang2)
+        embs1 = embed_chunks(translated1)
+        embs2 = embed_chunks(translated2)
+    else:  # labse
+        translated1 = translated2 = None
+        embs1 = embed_chunks(texts1)
+        embs2 = embed_chunks(texts2)
 
+    sim_matrix = compute_similarity_matrix(embs1, embs2)
     alignment = monotone_max_weight_alignment(sim_matrix, tau=tau)
 
     # Load problem text for optional GPT-4o validation
@@ -399,6 +467,9 @@ def align_problem(
         store_matrix=store_matrix,
         problem_text=problem_text,
         validate_n=validate_n,
+        translated1=translated1,
+        translated2=translated2,
+        aligner=aligner,
     )
 
 
@@ -410,6 +481,7 @@ def main() -> None:
     lang1 = args.lang1
     lang2 = args.lang2
     tau = args.tau
+    aligner = args.aligner
     store_matrix = not args.no_store_matrix
 
     rollouts_dir = (
@@ -431,7 +503,8 @@ def main() -> None:
         print(f"No problem directories found in {lang1_base}")
         return
 
-    print(f"\nAligning {lang1} → {lang2} for {args.dataset} ({len(problem_dirs)} problems, tau={tau})")
+    print(f"\nAligning {lang1} → {lang2} for {args.dataset} "
+          f"({len(problem_dirs)} problems, tau={tau}, aligner={aligner})")
 
     all_summary_rows = []
     n_aligned = 0
@@ -445,6 +518,7 @@ def main() -> None:
             force=args.force,
             store_matrix=store_matrix,
             validate_n=args.validate_n,
+            aligner=aligner,
         )
         if data is None:
             print(f"  [skip] {problem_dir.name}")
@@ -456,9 +530,10 @@ def main() -> None:
         print(f"  [ok] {problem_dir.name}: {data['n_aligned_pairs']} pairs aligned "
               f"(mean sim={data['mean_similarity']:.3f})")
 
-    # Write summary CSV
+    # Write summary CSV — filename encodes the aligner so both results can coexist
     if all_summary_rows:
-        csv_path = rollouts_dir / f"alignment_summary_{lang1}_{lang2}.csv"
+        suffix = "" if aligner == "labse" else f"_{aligner}"
+        csv_path = rollouts_dir / f"alignment_summary_{lang1}_{lang2}{suffix}.csv"
         fieldnames = list(all_summary_rows[0].keys())
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)

@@ -44,7 +44,7 @@ def run_test(name: str, fn):
 def test_imports():
     from multicot.chunker import split_solution_into_chunks
     from multicot.lang_verifier import check_chunk_languages
-    from multicot.data_loaders import MGSMLoader, MMATHLoader, MMMMLULoader, Problem, load_dataset_problems
+    from multicot.data_loaders import MGSMLoader, MMATHLoader, MMMMLULoader, PolyMathLoader, Problem, load_dataset_problems
     from multicot.utils import (
         extract_answer, check_answer_for_problem,
         normalize_answer, verify_language, parse_final_answer,
@@ -366,6 +366,94 @@ def test_plots_generate():
 
 
 # ---------------------------------------------------------------------------
+# 7b. PolyMath tests (offline: answer extraction; online: loader downloads ~1MB)
+# ---------------------------------------------------------------------------
+
+def test_open_math_answer_extraction():
+    """open_math answer type: boxed extraction and numeric checking."""
+    from multicot.utils import extract_answer, check_answer_for_problem
+    from multicot.data_loaders import Problem
+
+    # \boxed{} extraction
+    p = Problem("polymath_low-0", "polymath", "en", "q?", "42", "open_math")
+    text = "Let me solve step by step... \\boxed{42}"
+    ans = extract_answer(text, p, "en")
+    assert ans == "42", f"Expected '42', got '{ans}'"
+    assert check_answer_for_problem(ans, p), "Numeric check for '42' failed"
+
+    # Final: marker extraction
+    p2 = Problem("polymath_low-1", "polymath", "en", "q?", "3.14", "open_math")
+    ans2 = extract_answer("Some work. Final: 3.14", p2, "en")
+    assert check_answer_for_problem(ans2, p2), f"Numeric check for '3.14' failed (got '{ans2}')"
+
+    # String fallback (non-numeric answer)
+    p3 = Problem("polymath_low-2", "polymath", "en", "q?", "yes", "open_math")
+    ans3 = extract_answer("Conclusion: \\boxed{yes}", p3, "en")
+    assert check_answer_for_problem(ans3, p3), f"String match for 'yes' failed (got '{ans3}')"
+
+    return True
+
+
+def test_chunker_th():
+    """Thai text chunker: splits on paragraph breaks and ASCII .?! boundaries."""
+    from multicot.chunker import split_solution_into_chunks
+    text = "ขั้นแรก ฉันสังเกตว่า x = 5. จากนั้น ฉันคำนวณ y = x + 3. ดังนั้น y = 8."
+    chunks = split_solution_into_chunks(text, "th")
+    assert len(chunks) >= 2, f"Expected >=2 chunks for Thai text, got {len(chunks)}: {chunks}"
+    return True
+
+
+def test_polymath_loader_offline():
+    """PolyMath loader: class exists, language validation works, cross-lang IDs are stable."""
+    from multicot.data_loaders import PolyMathLoader
+
+    loader = PolyMathLoader(difficulties=["low"])
+
+    # Unknown language should raise
+    try:
+        loader.load_language("xx")
+        assert False, "Should have raised ValueError for unknown language"
+    except ValueError as e:
+        assert "PolyMath" in str(e)
+
+    # get_problem_ids returns deterministic sorted IDs for 'low' difficulty
+    ids = loader.get_problem_ids()
+    assert len(ids) == 125, f"Expected 125 IDs for low difficulty, got {len(ids)}"
+    assert ids[0].startswith("polymath_low-"), f"Unexpected id format: {ids[0]}"
+    assert ids == sorted(ids), "IDs not sorted"
+
+    # Cross-lang ID stripping
+    assert loader._cross_lang_id("low-en-0") == "polymath_low-0"
+    assert loader._cross_lang_id("top-zh-124") == "polymath_top-124"
+
+    return True
+
+
+def test_polymath_loader_hf():
+    """PolyMath HF loader: downloads low/en (125 problems) — skipped if offline."""
+    try:
+        from multicot.data_loaders import PolyMathLoader
+        loader = PolyMathLoader(difficulties=["low"])
+        problems = loader.load_language("en")
+        if len(problems) == 0:
+            return None  # SKIP: offline or dataset not cached
+        assert len(problems) == 125, f"Expected 125 low-difficulty en problems, got {len(problems)}"
+        p = problems[0]
+        assert p.dataset == "polymath"
+        assert p.language == "en"
+        assert p.answer_type == "open_math"
+        assert p.problem_id.startswith("polymath_low-")
+        assert p.question.strip()
+        assert p.gt_answer.strip()
+        print(f"    first id={p.problem_id}, answer='{p.gt_answer}'")
+    except Exception as e:
+        if "ConnectionError" in type(e).__name__ or "requests" in str(e).lower() or "network" in str(e).lower():
+            return None  # SKIP when offline
+        raise
+    return True
+
+
+# ---------------------------------------------------------------------------
 # 8. Alignment tests
 # ---------------------------------------------------------------------------
 
@@ -380,8 +468,25 @@ def test_align_chunks_imports():
         validate_alignment_with_llm,
         write_alignment_json,
         build_summary_rows,
+        translate_chunks_to_english,
         main as align_main,
     )
+    return True
+
+
+def test_translate_en_alignment_offline():
+    """translate_en aligner: translate_chunks_to_english is identity for English input."""
+    from multicot.align_chunks import translate_chunks_to_english
+
+    chunks = ["First, I note that x = 5.", "Then I compute y = x + 3."]
+
+    result = translate_chunks_to_english(chunks, "en")
+    assert result == chunks, f"en→en should be identity, got {result}"
+    assert result is not chunks, "should return a copy, not the same list object"
+
+    result_empty = translate_chunks_to_english([], "fr")
+    assert result_empty == [], "empty input should return empty list"
+
     return True
 
 
@@ -566,12 +671,18 @@ def main():
         ("data: MGSM loader en (250 problems)", test_mgsm_loader_en),
         ("data: MGSM Arabic raises clear error", test_mgsm_arabic_error),
         ("data: load_dataset_problems mgsm en 3", test_load_dataset_problems_mgsm_en),
+        # PolyMath
+        ("answer: open_math extraction + checking", test_open_math_answer_extraction),
+        ("chunker: Thai (th)", test_chunker_th),
+        ("polymath: loader offline validation", test_polymath_loader_offline),
+        ("polymath: HF download low/en (125 problems)", test_polymath_loader_hf),
         # Analysis on disk data
         ("analysis: analyze_problem on existing data", test_analyze_existing_data),
         ("plots: load_language_chunks on existing data", test_plots_load_language_chunks),
         ("plots: generate figures from labeled data", test_plots_generate),
         # Alignment
         ("align: imports", test_align_chunks_imports),
+        ("align: translate_en identity for English", test_translate_en_alignment_offline),
         ("align: DP monotone alignment correctness", test_monotone_alignment_dp),
         ("align: DP empty when below tau", test_monotone_alignment_empty),
         ("align: cosine similarity matrix", test_similarity_matrix),

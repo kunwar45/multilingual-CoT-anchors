@@ -33,6 +33,9 @@ runs/
 figures/*.png
 figures/*.pdf
 
+# Vertex per-run configs (contain injected API keys)
+vertex_jobs/runs/
+
 # IDE
 .idea/
 .vscode/

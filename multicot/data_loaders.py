@@ -45,7 +45,7 @@ def _load_dataset_from_hub(path: str, name: Optional[str], split: str, cache_dir
         raise
 
 
-SUPPORTED_LANGUAGES = ["en", "fr", "zh", "ar", "de", "es", "hi", "bn", "id", "it", "ja", "ko", "pt", "sw", "yo"]
+SUPPORTED_LANGUAGES = ["en", "fr", "zh", "ar", "de", "es", "hi", "bn", "id", "it", "ja", "ko", "ms", "pt", "ru", "sw", "te", "th", "vi", "yo"]
 
 LANGUAGE_NAMES = {
     "en": "English",
@@ -60,11 +60,13 @@ LANGUAGE_NAMES = {
     "it": "Italian",
     "ja": "Japanese",
     "ko": "Korean",
+    "ms": "Malay",
     "pt": "Portuguese",
     "ru": "Russian",
     "sw": "Swahili",
     "te": "Telugu",
     "th": "Thai",
+    "vi": "Vietnamese",
     "yo": "Yoruba",
 }
 
@@ -366,12 +368,121 @@ class MMMMLULoader:
         return all_problems
 
 
+class PolyMathLoader:
+    """
+    Loader for the PolyMath dataset (Qwen/PolyMath on HuggingFace).
+
+    9,000 expert-translated math problems across 18 languages and 4 difficulty
+    tiers (low, medium, high, top — 125 problems each per language).
+
+    Cross-language alignment is via a language-agnostic problem ID derived by
+    stripping the language token from the raw id field:
+        "low-en-0" → "polymath_low-0"
+
+    Languages: ar, bn, de, en, es, fr, id, it, ja, ko, ms, pt, ru, sw, te, th, vi, zh
+    Answer type: "open_math" (mixed numeric/LaTeX/expression answers)
+    """
+
+    POLYMATH_LANGUAGES = [
+        "ar", "bn", "de", "en", "es", "fr", "id", "it", "ja", "ko",
+        "ms", "pt", "ru", "sw", "te", "th", "vi", "zh",
+    ]
+    DIFFICULTIES = ["low", "medium", "high", "top"]
+
+    def __init__(
+        self,
+        cache_dir: Optional[Path] = None,
+        difficulties: Optional[list] = None,
+    ):
+        self.cache_dir = cache_dir
+        self.difficulties = difficulties if difficulties is not None else self.DIFFICULTIES
+        self._cache: dict[str, list[Problem]] = {}
+
+    def _cross_lang_id(self, raw_id: str) -> str:
+        """Strip language token from HF id field: 'low-en-0' → 'polymath_low-0'."""
+        parts = raw_id.split("-")
+        if len(parts) == 3:
+            return f"polymath_{parts[0]}-{parts[2]}"
+        return f"polymath_{raw_id}"
+
+    def load_language(self, language: str) -> list[Problem]:
+        """Load all PolyMath problems for a specific language."""
+        if language not in self.POLYMATH_LANGUAGES:
+            raise ValueError(
+                f"Language '{language}' not available in PolyMath. "
+                f"Available: {self.POLYMATH_LANGUAGES}"
+            )
+
+        if language in self._cache:
+            return self._cache[language]
+
+        problems = []
+        for diff in self.difficulties:
+            try:
+                ds = _load_dataset_from_hub(
+                    "Qwen/PolyMath",
+                    language,
+                    split=diff,
+                    cache_dir=str(self.cache_dir) if self.cache_dir else None,
+                    token=_hf_token(),
+                )
+            except Exception:
+                continue  # difficulty split may not exist for all configs
+
+            for row in ds:
+                problems.append(Problem(
+                    problem_id=self._cross_lang_id(row["id"]),
+                    dataset="polymath",
+                    language=language,
+                    question=row["question"],
+                    gt_answer=str(row["answer"]).strip(),
+                    answer_type="open_math",
+                ))
+
+        self._cache[language] = problems
+        return problems
+
+    def load_parallel(
+        self,
+        languages: list[str],
+        problem_ids: Optional[list[str]] = None,
+    ) -> dict[str, dict[str, Problem]]:
+        """
+        Load problems across multiple languages.
+
+        Returns:
+            Nested dict: {problem_id: {language: Problem}}
+        """
+        all_problems: dict[str, dict[str, Problem]] = {}
+        for lang in languages:
+            for p in self.load_language(lang):
+                all_problems.setdefault(p.problem_id, {})[lang] = p
+
+        if problem_ids is not None:
+            all_problems = {
+                pid: langs for pid, langs in all_problems.items()
+                if pid in problem_ids
+            }
+
+        return all_problems
+
+    def get_problem_ids(self, n: Optional[int] = None) -> list[str]:
+        """Get deterministic sorted list of problem IDs (across all requested difficulties)."""
+        ids = sorted({
+            self._cross_lang_id(f"{d}-en-{i}")
+            for d in self.difficulties
+            for i in range(125)
+        })
+        return ids[:n] if n is not None else ids
+
+
 def load_dataset_problems(
     dataset: str,
     languages: list[str],
     num_problems: Optional[int] = None,
     data_dir: Optional[Path] = None,
     problem_ids: Optional[list[str]] = None,
+    difficulties: Optional[list[str]] = None,
 ) -> dict[str, dict[str, Problem]]:
     """
     Unified entry point for loading problems.
@@ -379,11 +490,13 @@ def load_dataset_problems(
     Returns only problems available in ALL requested languages.
 
     Args:
-        dataset: "mgsm", "mmath", or "mmmlu"
+        dataset: "mgsm", "mmath", "mmmlu", or "polymath"
         languages: List of language codes
         num_problems: Optional limit on number of problems
         data_dir: Path to MMATH data directory (required for mmath)
         problem_ids: Optional list of specific problem IDs to load
+        difficulties: PolyMath only — list of difficulty tiers to include
+                      (default: all four: low, medium, high, top)
 
     Returns:
         Nested dict: {problem_id: {language: Problem}}
@@ -396,8 +509,10 @@ def load_dataset_problems(
         loader = MMATHLoader(data_dir=Path(data_dir))
     elif dataset == "mmmlu":
         loader = MMMMLULoader()
+    elif dataset == "polymath":
+        loader = PolyMathLoader(difficulties=difficulties)
     else:
-        raise ValueError(f"Unknown dataset: {dataset}. Use 'mgsm', 'mmath', or 'mmmlu'.")
+        raise ValueError(f"Unknown dataset: {dataset}. Use 'mgsm', 'mmath', 'mmmlu', or 'polymath'.")
 
     parallel = loader.load_parallel(languages, problem_ids=problem_ids)
 

@@ -7,9 +7,11 @@ splitter based on the language code.
 
 Supported languages:
   en / fr  – Latin-script with . ? ! sentence boundaries
-  zh       – Chinese punctuation (。！？) plus ASCII equivalents
+  zh / ja  – Chinese/Japanese punctuation (。！？) plus ASCII equivalents
   ar       – Arabic text with ؟ plus ASCII .?!
-  (other)  – falls back to en/fr splitter
+  th       – Thai text; splits on paragraph breaks and ASCII .?! (LaTeX contexts)
+  (other)  – falls back to en/fr splitter (de, es, hi, bn, id, it, ko, ms,
+              pt, ru, sw, te, vi, yo)
 """
 
 from __future__ import annotations
@@ -216,6 +218,68 @@ def _split_ar(solution_text: str) -> List[str]:
     return chunks
 
 
+def _split_th(solution_text: str) -> List[str]:
+    """Split Thai text on paragraph breaks and ASCII .?! (for LaTeX-mixed content).
+
+    Thai doesn't use Western sentence-ending punctuation consistently, so we
+    split primarily on paragraph boundaries and newline-terminated ASCII
+    punctuation (which models use when writing LaTeX math in Thai CoT).
+    """
+    sentence_endings = [".", "?", "!"]
+    paragraph_ending_patterns = ["\n\n", "\r\n\r\n"]
+
+    chunks: List[str] = []
+    current_chunk = ""
+
+    i = 0
+    while i < len(solution_text):
+        current_chunk += solution_text[i]
+
+        is_paragraph_end = False
+        for pattern in paragraph_ending_patterns:
+            if (
+                i + len(pattern) <= len(solution_text)
+                and solution_text[i : i + len(pattern)] == pattern
+            ):
+                is_paragraph_end = True
+                break
+
+        is_sentence_end = False
+        if solution_text[i] in sentence_endings and not _is_inside_latex(solution_text, i):
+            if i < len(solution_text) - 1:
+                next_char = solution_text[i + 1]
+                if next_char == " " or next_char == "\n":
+                    is_sentence_end = True
+
+        if is_paragraph_end or is_sentence_end:
+            if current_chunk.strip():
+                chunks.append(current_chunk.strip())
+                current_chunk = ""
+
+        i += 1
+
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
+
+    # Merge chunks shorter than 8 characters
+    i = 0
+    while i < len(chunks):
+        if len(chunks[i]) < 8:
+            if i == len(chunks) - 1:
+                if i > 0:
+                    chunks[i - 1] = chunks[i - 1] + " " + chunks[i]
+                    chunks.pop(i)
+            else:
+                chunks[i + 1] = chunks[i] + " " + chunks[i + 1]
+                chunks.pop(i)
+            if i == 0 and len(chunks) == 1:
+                break
+        else:
+            i += 1
+
+    return chunks
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -247,6 +311,9 @@ def split_solution_into_chunks(solution_text: str, language: str = "en") -> List
         return _split_zh(solution_text)
     elif language == "ar":
         return _split_ar(solution_text)
+    elif language == "th":
+        return _split_th(solution_text)
     else:
-        # Latin-script and other languages (de, es, hi, bn, id, it, ko, pt, sw, yo)
+        # Latin-script and other languages (de, es, hi, bn, id, it, ko, ms,
+        # pt, ru, sw, te, vi, yo) — all use . ? ! sentence boundaries
         return _split_en_fr(solution_text)

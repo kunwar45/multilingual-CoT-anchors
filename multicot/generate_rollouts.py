@@ -41,20 +41,24 @@ if os.getenv("HF_TOKEN"):
 
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY")
+VERTEX_API_BASE_URL = os.getenv("VERTEX_API_BASE_URL", "http://localhost:8000/v1")
+VERTEX_API_KEY = os.getenv("VERTEX_API_KEY", "")
 
 # ---------------------------------------------------------------------------
 # CLI Arguments
 # ---------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser(description="Generate multilingual chain-of-thought rollouts")
-parser.add_argument("--dataset", type=str, required=True, choices=["mgsm", "mmath", "mmmlu"],
+parser.add_argument("--dataset", type=str, required=True, choices=["mgsm", "mmath", "mmmlu", "polymath"],
                     help="Dataset to use")
 parser.add_argument("--languages", type=str, default="en,fr,zh,ar",
                     help="Comma-separated language codes")
 parser.add_argument("--data_dir", type=str, default=None,
                     help="Path to MMATH JSON files (required for mmath)")
-# default="deepseek-r1-distill-qwen-14b"
-parser.add_argument("-m", "--model", type=str, default="meta-llama/Llama-3.2-3B-Instruct-Turbo",
+parser.add_argument("--difficulties", type=str, default=None,
+                    help="PolyMath only: comma-separated difficulty tiers to include "
+                         "(low,medium,high,top). Default: all four.")
+parser.add_argument("-m", "--model", type=str, default="Qwen/Qwen3.5-9B",
                     help="Model to use")
 parser.add_argument("-b", "--base_solution_type", type=str, default="correct",
                     choices=["correct", "incorrect"],
@@ -83,8 +87,8 @@ parser.add_argument("-s", "--seed", type=int, default=44,
 parser.add_argument("-f", "--force", action="store_true",
                     help="Force regeneration")
 parser.add_argument("-p", "--provider", type=str, default="Together",
-                    choices=["Together", "Fireworks", "Local"],
-                    help="API provider")
+                    choices=["Together", "Fireworks", "Local", "Vertex"],
+                    help="API provider (Vertex uses VERTEX_API_BASE_URL + optional VERTEX_API_KEY)")
 parser.add_argument("-q", "--quantize", action="store_true", default=False,
                     help="Use 4-bit quantization for local model")
 parser.add_argument("-bs", "--batch_size", type=int, default=8,
@@ -113,6 +117,11 @@ if args.provider == "Together" and not TOGETHER_API_KEY:
     raise ValueError("TOGETHER_API_KEY not found in environment variables")
 elif args.provider == "Fireworks" and not FIREWORKS_API_KEY:
     raise ValueError("FIREWORKS_API_KEY not found in environment variables")
+elif args.provider == "Vertex" and not VERTEX_API_BASE_URL:
+    raise ValueError("VERTEX_API_BASE_URL not set — add it to .env (e.g. http://<vm-ip>:8000/v1)")
+
+# Global semaphore: cap concurrent API requests well below the 10 QPS rate limit
+_API_SEM = asyncio.Semaphore(6)
 
 # Set random seeds
 random.seed(args.seed)
@@ -320,6 +329,25 @@ def get_output_dir(language: str) -> Path:
 # API Infrastructure
 # ---------------------------------------------------------------------------
 
+def _build_chat_messages(prompt: str) -> list:
+    """Convert a raw prompt string into chat messages with assistant prefill.
+
+    Splits at the last <think> boundary so the model continues from inside the
+    think block rather than starting a new one.
+    """
+    think_split = "\n<think>\n"
+    if think_split in prompt:
+        user_content, after_think = prompt.split(think_split, 1)
+        assistant_prefill = "<think>\n" + after_think
+    else:
+        user_content = prompt
+        assistant_prefill = None
+    messages = [{"role": "user", "content": user_content}]
+    if assistant_prefill:
+        messages.append({"role": "assistant", "content": assistant_prefill})
+    return messages
+
+
 async def handle_streaming_response(api_url: str, headers: Dict, payload: Dict) -> Dict:
     """Handle streaming responses from Together or Fireworks API."""
     try:
@@ -327,34 +355,38 @@ async def handle_streaming_response(api_url: str, headers: Dict, payload: Dict) 
         finish_reason = None
         usage = None
 
-        async with httpx.AsyncClient() as client:
-            async with client.stream("POST", api_url, headers=headers, json=payload, timeout=240) as response:
-                if response.status_code != 200:
-                    return {"error": f"API error: {response.status_code}", "details": await response.aread()}
+        async with _API_SEM:
+            async with httpx.AsyncClient() as client:
+                async with client.stream("POST", api_url, headers=headers, json=payload, timeout=240) as response:
+                    if response.status_code != 200:
+                        body = await response.aread()
+                        body_str = body.decode("utf-8", errors="replace")
+                        print(f"  [API error {response.status_code}] {body_str[:400]}")
+                        return {"error": f"API error: {response.status_code}", "details": body}
 
-                async for chunk in response.aiter_lines():
-                    if not chunk.strip():
-                        continue
-                    if chunk == "data: [DONE]":
-                        break
-                    if chunk.startswith("data: "):
-                        try:
-                            data = json.loads(chunk[6:])
-                            if "choices" in data and len(data["choices"]) > 0:
-                                choice = data["choices"][0]
-                                if "text" in choice and choice["text"]:
-                                    collected_text += choice["text"]
-                                elif "delta" in choice and "content" in choice["delta"]:
-                                    collected_text += choice["delta"]["content"]
-                                if choice.get("finish_reason"):
-                                    finish_reason = choice["finish_reason"]
-                            if "usage" in data and data["usage"]:
-                                usage = data["usage"]
-                        except json.JSONDecodeError:
-                            pass
+                    async for chunk in response.aiter_lines():
+                        if not chunk.strip():
+                            continue
+                        if chunk == "data: [DONE]":
+                            break
+                        if chunk.startswith("data: "):
+                            try:
+                                data = json.loads(chunk[6:])
+                                if "choices" in data and len(data["choices"]) > 0:
+                                    choice = data["choices"][0]
+                                    if "text" in choice and choice["text"]:
+                                        collected_text += choice["text"]
+                                    elif "delta" in choice and "content" in choice["delta"]:
+                                        collected_text += choice["delta"]["content"]
+                                    if choice.get("finish_reason"):
+                                        finish_reason = choice["finish_reason"]
+                                if "usage" in data and data["usage"]:
+                                    usage = data["usage"]
+                            except json.JSONDecodeError:
+                                pass
 
-        # Handle Together API <think> token
-        if args.provider == "Together":
+        # Strip spurious leading <think> tag some providers add even with assistant prefill
+        if args.provider in ("Together", "Vertex"):
             if collected_text.startswith("<think>\n"):
                 collected_text = collected_text[len("<think>\n"):]
             elif collected_text.startswith("<think>"):
@@ -382,13 +414,27 @@ async def make_api_request(prompt: str, temperature: float, top_p: float, max_to
         }
         payload = {
             "model": get_together_model_id(),
-            "prompt": prompt,
+            "messages": _build_chat_messages(prompt),
             "temperature": temperature,
             "top_p": top_p,
             "max_tokens": max_tokens,
             "stream": True,
         }
-        api_url = "https://api.together.xyz/v1/completions"
+        api_url = "https://api.together.xyz/v1/chat/completions"
+
+    elif args.provider == "Vertex":
+        headers = {"Content-Type": "application/json", "accept": "application/json"}
+        if VERTEX_API_KEY:
+            headers["Authorization"] = f"Bearer {VERTEX_API_KEY}"
+        payload = {
+            "model": args.model,
+            "messages": _build_chat_messages(prompt),
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        api_url = f"{VERTEX_API_BASE_URL.rstrip('/')}/chat/completions"
 
     elif args.provider == "Fireworks":
         headers = {
@@ -406,17 +452,24 @@ async def make_api_request(prompt: str, temperature: float, top_p: float, max_to
         }
         api_url = "https://api.fireworks.ai/inference/v1/completions"
 
-    max_retries = args.max_retries
-    retry_delay = 2
+    max_retries = max(args.max_retries, 8)  # at least 8 attempts to ride out rate limits
 
     for attempt in range(max_retries):
         try:
-            return await handle_streaming_response(api_url, headers, payload)
+            result = await handle_streaming_response(api_url, headers, payload)
         except Exception as e:
-            print(f"Exception during API request (attempt {attempt+1}/{max_retries}): {e}")
             if attempt == max_retries - 1:
                 return {"error": f"Request exception: {str(e)}"}
-            await asyncio.sleep(retry_delay * (2 ** attempt))
+            await asyncio.sleep(2 ** attempt + random.uniform(0, 1))
+            continue
+
+        if "429" in result.get("error", ""):
+            wait = min(2 ** attempt + random.uniform(0, 1), 60)
+            print(f"  [429] rate limited, retrying in {wait:.1f}s ({attempt + 1}/{max_retries})")
+            await asyncio.sleep(wait)
+            continue
+
+        return result
 
     return {"error": "All API request attempts failed"}
 
@@ -448,8 +501,8 @@ async def generate_base_solution(
             response = await make_api_request(prompt, temperature, args.top_p, args.max_tokens)
 
             if "error" in response:
+                _log(language, pid, f"Unsuccessful ({response['error']}), retrying." if attempt < max_retries - 1 else f"Failed: {response['error']}")
                 if attempt < max_retries - 1:
-                    _log(language, pid, "Unsuccessful, retrying.")
                     await asyncio.sleep(retry_delay * (2 ** attempt))
                     continue
                 return {"prompt": prompt, "solution": f"Error: {response['error']}", "error": response["error"]}
@@ -707,10 +760,12 @@ async def process_problem_language(
         with open(base_solution_file, "w", encoding="utf-8") as f:
             json.dump(base_solution, f, indent=2, ensure_ascii=False)
 
-    # Extract solution text for chunking
+    # Extract solution text for chunking.
+    # Use rsplit to find the LAST <think> — the system prompt contains "<think>...</think>"
+    # as an example, so split("[0]" would hit that literal "..." instead of the reasoning.
     source_text = base_solution.get("full_cot", "")
     if "<think>" in source_text:
-        solution_text = source_text.split("<think>")[1].strip()
+        solution_text = source_text.rsplit("<think>", 1)[1].strip()
         if "</think>" in solution_text:
             solution_text = solution_text.split("</think>")[0].strip()
     else:
@@ -901,7 +956,10 @@ async def process_problem_language(
                 new_solutions = []
                 done_count = 0
                 for coro in asyncio.as_completed(tasks):
-                    result = await coro
+                    try:
+                        result = await coro
+                    except asyncio.CancelledError:
+                        result = {"error": "cancelled", "is_correct": False, "chunk_resampled": "", "answer": ""}
                     new_solutions.append(result)
                     done_count += 1
                     if "error" in result:
@@ -935,12 +993,14 @@ async def main():
 
     # Load problems
     print(f"Loading {args.dataset} problems for languages: {languages}")
+    difficulties = [d.strip() for d in args.difficulties.split(",")] if args.difficulties else None
     problems = load_dataset_problems(
         dataset=args.dataset,
         languages=languages,
         num_problems=args.num_problems,
         data_dir=Path(args.data_dir) if args.data_dir else None,
         problem_ids=problem_ids,
+        difficulties=difficulties,
     )
 
     if not problems:
