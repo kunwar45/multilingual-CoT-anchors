@@ -527,8 +527,8 @@ def main():
     parser.add_argument("--dataset", type=str, required=True, choices=["mgsm", "mmath", "mmmlu"])
     parser.add_argument("--languages", type=str, default="en,fr,zh,ar",
                         help="Comma-separated language codes")
-    parser.add_argument("--model", type=str, default="Llama-3.2-3B-Instruct-Turbo",
-                        help="Model subdirectory name (e.g. Llama-3.2-3B-Instruct-Turbo)")
+    parser.add_argument("--model", type=str, default="Qwen/Qwen3.5-9B",
+                        help="Model subdirectory name (e.g. Qwen/Qwen3.5-9B)")
     parser.add_argument("--temperature", type=float, default=0.6)
     parser.add_argument("--top_p", type=float, default=0.95)
     parser.add_argument("--rollouts_base", type=str, default="multicot",

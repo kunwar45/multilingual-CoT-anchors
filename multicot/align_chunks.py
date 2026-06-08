@@ -30,7 +30,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description="Cross-language chunk alignment via LaBSE")
 parser.add_argument("--dataset", type=str, required=True, choices=["mgsm", "mmath", "mmmlu", "polymath"])
-parser.add_argument("--model", type=str, default="deepseek-r1-distill-qwen-14b")
+parser.add_argument("--model", type=str, default="Qwen/Qwen3.5-9B")
 parser.add_argument("--temperature", type=float, default=0.6)
 parser.add_argument("--top_p", type=float, default=0.95)
 parser.add_argument("--lang1", type=str, default="en")

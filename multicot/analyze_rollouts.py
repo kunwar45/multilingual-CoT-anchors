@@ -68,7 +68,7 @@ parser.add_argument("--languages", type=str, default="en,fr,zh,ar",
                     help="Comma-separated language codes")
 parser.add_argument("--rollouts_dir", type=str, default=None,
                     help="Override rollouts directory (default: auto-detected from dataset/model)")
-parser.add_argument("--model", type=str, default="deepseek-r1-distill-qwen-14b",
+parser.add_argument("--model", type=str, default="Qwen/Qwen3.5-9B",
                     help="Model name (for directory structure)")
 parser.add_argument("--temperature", type=float, default=0.6)
 parser.add_argument("--top_p", type=float, default=0.95)

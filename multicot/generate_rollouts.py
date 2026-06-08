@@ -105,6 +105,8 @@ parser.add_argument("--skip_recalculate", action="store_true", default=False,
                     help="Skip recalculating accuracy for existing rollouts")
 parser.add_argument("--include_problems", type=str, default=None,
                     help="Comma-separated list of problem IDs to include")
+parser.add_argument("--random_problems", action="store_true", default=False,
+                    help="Randomly sample problems instead of taking the first N")
 parser.add_argument("--include_chunks", type=str, default=None,
                     help="Comma-separated list of chunk indices to include")
 parser.add_argument("--output_suffix", type=str, default=None,
@@ -1001,6 +1003,8 @@ async def main():
         data_dir=Path(args.data_dir) if args.data_dir else None,
         problem_ids=problem_ids,
         difficulties=difficulties,
+        random_sample=args.random_problems,
+        seed=args.seed,
     )
 
     if not problems:
@@ -1008,6 +1012,7 @@ async def main():
         return
 
     print(f"Loaded {len(problems)} problems available in all requested languages.")
+    print(f"Selected: {', '.join(problems.keys())}")
     print(f"Model: {args.model} (provider: {args.provider})")
 
     # Process each language

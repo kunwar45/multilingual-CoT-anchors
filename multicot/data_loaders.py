@@ -7,6 +7,7 @@ problem IDs and a unified Problem dataclass.
 
 import json
 import os
+import random
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
@@ -483,6 +484,8 @@ def load_dataset_problems(
     data_dir: Optional[Path] = None,
     problem_ids: Optional[list[str]] = None,
     difficulties: Optional[list[str]] = None,
+    random_sample: bool = False,
+    seed: Optional[int] = None,
 ) -> dict[str, dict[str, Problem]]:
     """
     Unified entry point for loading problems.
@@ -497,6 +500,8 @@ def load_dataset_problems(
         problem_ids: Optional list of specific problem IDs to load
         difficulties: PolyMath only — list of difficulty tiers to include
                       (default: all four: low, medium, high, top)
+        random_sample: If True, randomly sample num_problems instead of taking the first N
+        seed: Random seed for random_sample (default: nondeterministic)
 
     Returns:
         Nested dict: {problem_id: {language: Problem}}
@@ -527,6 +532,10 @@ def load_dataset_problems(
 
     # Limit number of problems
     if num_problems is not None:
-        sorted_ids = sorted_ids[:num_problems]
+        if random_sample and num_problems < len(sorted_ids):
+            rng = random.Random(seed)
+            sorted_ids = sorted(rng.sample(sorted_ids, num_problems))
+        else:
+            sorted_ids = sorted_ids[:num_problems]
 
     return {pid: complete[pid] for pid in sorted_ids}
