@@ -958,6 +958,10 @@ def analyze_problem(
 def main():
     languages = [l.strip() for l in args.languages.split(",")]
 
+    if not args.rollouts_dir:
+        from src.hf_fetching import ensure_rollouts
+        ensure_rollouts(args.dataset)  # HF is canonical — fetch if not local
+
     for language in languages:
         # Build rollouts directory path
         if args.rollouts_dir:

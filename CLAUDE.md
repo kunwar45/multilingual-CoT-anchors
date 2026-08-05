@@ -33,6 +33,12 @@ use MMMLU (or MMATH) for `ar`. The loader raises a clear error if you forget.
 
 ```
 src/                    correctness-critical reusable code (import as src.*):
+  hf_publishing.py        Hugging Face publishing: enforces the repo naming policy and
+                          required dataset-card fields in code (see "Datasets ... go to
+                          Hugging Face" below)
+  hf_fetching.py          Hugging Face fetching: CANONICAL_DATASETS registry + ensure_*
+                          helpers — pipeline stages auto-download missing inputs, so a
+                          fresh clone runs with no local data
   logprob_pivots/         pivot-score library:
                             config.py                frozen Config dataclass (models, langs, gen params)
                             sentence_segmentation.py pysbd segmentation → char spans
@@ -50,6 +56,8 @@ src/                    correctness-critical reusable code (import as src.*):
                             make_figures.py          STAGE 4: 5 plot types
                             smoke_test.py            31 offline checks (python -m src.rollout_importance.smoke_test)
 scripts/                pipeline drivers; a script pipes src/ functions together, no real logic
+  publish_to_hf.py        THE publishing entrypoint: pushes an artifact to the HF Hub with
+                          an enforced dataset card (spans both tracks, hence top-level)
   logprob_pivots/         one script per pipeline stage — see "The pipelines" below
   vertex/                 Vertex AI job infra: build_and_push.sh → create_vertex_run_config.py →
                           submit_vertex_job.sh → download_vertex_results.sh;
@@ -64,16 +72,16 @@ scratch/                one-off and AI-generated scripts. Default home for new e
                         code; NOTHING imports from it. multicot_archive/ = superseded v1 code.
 docs/                   docs/LOG.md (append-only research log, MOST RECENT FIRST) +
                         reports and writeups (docs/reports/)
-data/                   small input datasets kept in git (mgsm_subset.csv)
-output/                 ALL run artifacts:
+data/                   staged inputs (gitignored) — mgsm_subset.csv; rebuild with
+                        build_mgsm_subset or pull from HF multicot/2026-01-01-mgsm-subset-en-es-fr-de
+output/                 run artifacts (gitignored), LOCAL ITERATION ONLY — the archive is
+                        the multicot org on HF; delete local copies once published:
   rollouts/               rollout_importance trees:
                           {dataset}/{model}/temperature_{T}_top_p_{P}/{lang}/
                           {base_solution_type}_base_solution/problem_{id}/chunk_{i}/solutions.json
   logprob_pivots/runs/    logprob_pivots runs: run_<unix_ts>/ (generations.jsonl, accuracy
                           CSVs, sentence_pivots.csv, redo_scaffold_reason.csv)
   figures/                plot output (default of src/rollout_importance/make_figures.py)
-  vm_results/             frozen snapshot of results pulled from the GCP VM (code copies
-                          inside it are stale duplicates — never edit or import them)
 local/                  machine-local notes (gitignored)
 ```
 
@@ -111,6 +119,84 @@ work without hacks.
 - logprob_pivots runs locally on MPS by default (`Config.device_preference = "mps"`);
   rollout_importance generation is pure API calls — no GPU needed on this machine.
 
+## Datasets, run artifacts and eval results go to Hugging Face
+
+**Any dataset, rollout tree, eval result, run artifact, or trained model produced by work
+in this repository is published to the project org: https://huggingface.co/multicot.**
+The repository holds code and configuration; `output/` exists only for fast local
+iteration and plots. The canonical location for artifacts and results is HF. This applies
+to rollout trees, generation runs, accuracy tables, pivot scores, alignment outputs,
+judge/labeler outputs, embeddings, and any model organism / adapter we ever train
+(`--repo-type model`).
+
+Publish with the one entrypoint (token = `HF_TOKEN` in `.env` — it must have **write
+access to the multicot org**; the cached `hf auth login` token does not. Namespace comes
+from `HF_NAMESPACE=multicot` in `.env`. Repos are **public by default**; pass `--private`
+deliberately):
+
+```bash
+venv/bin/python scripts/publish_to_hf.py \
+  --path output/rollouts \
+  --name <YYYY-MM-DD>-<short-description> \
+  --track rollout_importance --date-generated <date> --languages en,fr,zh \
+  --models "<every model id>" --experiment "<one sentence>" \
+  --provenance "<exact command to regenerate>" \
+  [--generation-config ...] [--schema ...] [--notes ...]
+```
+
+### Naming: the title carries the date and the subject
+
+`<YYYY-MM-DD>-<short-experiment-description>`, lowercase with hyphens. The date is the
+date the data was **generated**, not uploaded. `src/hf_publishing.py` rejects
+non-conforming names — do not work around it.
+
+### Required dataset-card fields (enforced in code)
+
+| field | meaning |
+| --- | --- |
+| `experiment` | Which experiment produced this, in one sentence |
+| `date_generated` | ISO date the data was produced |
+| `track` | `logprob_pivots` or `rollout_importance` |
+| `languages` | Languages covered — the field most easily lost and the one a future reader needs most |
+| `models` | Every model id involved |
+| `provenance` | How to regenerate: the exact script and arguments |
+| `source_repo` | Added automatically: this repo + the git SHA at publish time |
+
+### What stays in git / what does not
+
+**In git:** code, configs, prompts, seeds, docs/reports, and a **pointer to every HF repo
+in `docs/LOG.md`** — the link must never live only in someone's memory. **Not in git and
+not kept locally once published:** inputs, rollout trees, run outputs, model weights,
+caches. `output/` and `data/` are fully gitignored; results deleted locally after
+publishing live on in HF (and pre-2026-08-05 copies in git history).
+
+### Code treats HF as the canonical source (not just the archive)
+
+`src/hf_fetching.py` holds `CANONICAL_DATASETS` — the code's single map of where data
+lives — plus `ensure_*` helpers. `generate_cot` fetches the MGSM subset if `data/` is
+empty; the logprob analysis stages fetch the published runs if `output/` is empty
+(`latest_logprob_run_dir` replaces the per-script `find_latest_run`); the rollout
+analysis stages fetch the published rollout trees. **When you publish a new canonical
+artifact, update `CANONICAL_DATASETS` in the same change** — otherwise the code keeps
+fetching the old data. Local copies fetched this way are disposable; delete them freely.
+
+### The scratch bucket (in-progress data only)
+
+`hf://buckets/multicot/rollout-scratch` is a **mutable bucket with no history** — the
+directory structure is the only organization it has. Use it to sync in-progress rollout
+trees off a VM/Vertex box before a run is frozen into a dated dataset repo; layout is
+`rollouts/<run-id>/<dataset>/<model>/...` — always include the run id, never sync to the
+bucket root. Sync with `hf sync` (env: `set -a; source .env; set +a`). A finished run
+graduates to a dated dataset repo via `scripts/publish_to_hf.py`; the bucket copy is then
+deletable. Never treat the bucket as the archive.
+
+### Published so far (all public, under `multicot/`)
+
+- `2026-01-01-mgsm-subset-en-es-fr-de` — the fixed MGSM input subset for logprob_pivots
+- `2026-01-03-logprob-pivots-qwen25-05b-mgsm-runs` — the three logprob_pivots runs
+- `2026-04-30-rollout-importance-pilot-rollouts` — local pilot rollout trees (mgsm/mmath/mmmlu)
+- `2026-05-04-rollout-importance-vm-results` — frozen GCP VM results snapshot
+
 ## The pipelines (each stage = one explicit script)
 
 ### rollout_importance (counterfactual chunk importance, API models)
@@ -132,7 +218,7 @@ Override locations with `-o` / `--rollouts_base` / `--rollouts_dir` if needed.
 | Stage | Command | Produces |
 |---|---|---|
 | 0. smoke | `venv/bin/python -m scripts.logprob_pivots.smoke_test_models` | verifies both models load + generate |
-| 1. data | `venv/bin/python -m scripts.logprob_pivots.build_mgsm_subset` | `data/mgsm_subset.csv` |
+| 1. data | `venv/bin/python -m scripts.logprob_pivots.build_mgsm_subset` (or `hf download multicot/2026-01-01-mgsm-subset-en-es-fr-de --repo-type dataset --local-dir data/`) | `data/mgsm_subset.csv` |
 | 2. generate | `venv/bin/python -m scripts.logprob_pivots.generate_cot` | `output/logprob_pivots/runs/run_<ts>/generations.jsonl` |
 | 3. accuracy | `venv/bin/python -m scripts.logprob_pivots.eval_accuracy` | `accuracy_by_lang_cond_model.csv` |
 | 4. pivots | `venv/bin/python -m scripts.logprob_pivots.compute_pivot_scores --only-reason` | `sentence_pivots.csv` |
@@ -159,25 +245,26 @@ after `--` (e.g. `python -m src.rollout_importance.generate_rollouts ...`) and u
 
 ## Gotchas (learned the hard way)
 
-1. **`.gitignore` globally ignores `*.json`, `*.csv`, `*.png`, `*.pkl`.** Result files you
-   want tracked must be `git add -f`'d (that is how the tracked mmath rollouts and
-   logprob_pivots run CSVs got in). Conversely: never assume a result file is in git just
-   because it is on disk.
+1. **No results live in git or on local disk long-term.** `.gitignore` blocks `output/`,
+   `data/`, and all `*.json`/`*.csv`/`*.png` — do NOT `git add -f` result files; publish
+   them to HF instead. A result that exists only in `output/` is one `rm -rf` from gone.
+   (Result files committed before 2026-08-05 remain in git history at their old paths.)
 2. **`configs/vertex/runs/` contains real API keys** injected by
    `create_vertex_run_config.py`. It is gitignored and dockerignored — keep it that way.
 3. **MGSM has no Arabic** (see above). `en,fr,zh` for MGSM; `ar` via MMMLU.
 4. **Run the smoke test with the venv Python, never system python3**:
    `venv/bin/python -m src.rollout_importance.smoke_test`. 31 checks, offline, ~1 min.
-5. `output/vm_results/` contains stale *copies* of the rollout pipeline code (under its
-   old `multicot` name) alongside the VM's results. Only `src/rollout_importance/` is
-   live; never edit or import the copies.
+5. The GCP VM results snapshot (HF `multicot/2026-05-04-rollout-importance-vm-results`)
+   contains stale *copies* of the rollout pipeline code under its old `multicot` module
+   name. Only `src/rollout_importance/` is live; never import or resurrect the copies.
 6. The OpenAI client in `compute_importance.py` is lazily initialized via `_get_client()` —
    keep it lazy so offline analysis paths don't require `OPENAI_API_KEY`.
 7. `generate_rollouts.py` and `compute_importance.py` parse args at module import — they
    can only be run as `python -m ...`, never imported by other code (the smoke test works
    around this deliberately).
 8. logprob_pivots accuracy runs exist for run_1767244523 / run_1767307353 /
-   run_1767410979, but pivot scores + redo scaffold only for the latest (run_1767410979).
+   run_1767410979 (all in HF `multicot/2026-01-03-logprob-pivots-qwen25-05b-mgsm-runs`;
+   nothing local), but pivot scores + redo scaffold only for the latest (run_1767410979).
 9. Comments citing "root utils.py" / "root analyze_rollouts.py" refer to the upstream
    thought-anchors codebase this pipeline was adapted from — they are provenance, not
    references to files in this repo.
@@ -191,6 +278,7 @@ after `--` (e.g. `python -m src.rollout_importance.generate_rollouts ...`) and u
 - Rerun the relevant smoke test (`python -m src.rollout_importance.smoke_test` for the
   rollout track; `python -m scripts.logprob_pivots.smoke_test_models` for the local track)
   before declaring done.
-- New experiment results go under `output/`; only small, deliberately-kept summaries get
-  `git add -f`'d.
+- **Publish new datasets/results to Hugging Face** via `scripts/publish_to_hf.py`
+  (naming + card rules above) and record the repo URL in the `docs/LOG.md` entry.
+  `output/` is iteration space, not the archive.
 - Writeups and findings go in `docs/reports/`.

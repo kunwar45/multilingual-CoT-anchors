@@ -545,6 +545,9 @@ def main():
     output_dir = Path(args.output_dir) / args.dataset / args.model
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    from src.hf_fetching import ensure_rollouts
+    ensure_rollouts(args.dataset, args.rollouts_base)  # HF is canonical — fetch if not local
+
     # Build base rollouts path
     rollouts_dir = (
         Path(args.rollouts_base) / args.dataset / args.model

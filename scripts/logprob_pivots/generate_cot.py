@@ -67,7 +67,8 @@ def main():
     cfg = Config()
     device = pick_device(cfg)
 
-    df = pd.read_csv("data/mgsm_subset.csv")
+    from src.hf_fetching import ensure_mgsm_subset
+    df = pd.read_csv(ensure_mgsm_subset("data/mgsm_subset.csv"))
     if args.limit is not None:
         df = df.head(args.limit).copy()
         print(f"Using only first {len(df)} rows from mgsm_subset.csv for this run.")

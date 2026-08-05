@@ -48,6 +48,18 @@ bash scripts/logprob_pivots/run_full_pipeline.sh
 
 Note: MGSM has no Arabic — use `en,fr,zh` for MGSM and MMMLU for `ar`.
 
-Results are logged chronologically in [`docs/LOG.md`](docs/LOG.md). See
-[`CLAUDE.md`](CLAUDE.md) for the full structure rules, stage-by-stage pipeline tables,
-and gotchas.
+## Conventions
+
+Read [`CLAUDE.md`](CLAUDE.md) — the agent operating guide and repository-wide
+conventions — before running an experiment or committing. The rule that bites soonest:
+
+> **Datasets, rollout trees, eval results and model artifacts go to the
+> [multicot org on Hugging Face](https://huggingface.co/multicot), not into git.**
+> HF repos are named `<YYYY-MM-DD>-<short-experiment-description>` using the
+> date the data was *generated*. Every dataset card states the experiment, the models,
+> and **the languages covered**. Publish with `scripts/publish_to_hf.py`, which enforces
+> both rules, and record the repo URL in `docs/LOG.md`.
+
+Code, configs, prompts, seeds, analysis and reports stay in git; bulk data does not.
+`output/` is local iteration space only. Results are logged chronologically in
+[`docs/LOG.md`](docs/LOG.md).

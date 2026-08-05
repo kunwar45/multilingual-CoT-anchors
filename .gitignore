@@ -49,3 +49,8 @@ configs/vertex/runs/
 *.pkljar/
 # macOS AppleDouble files
 ._*
+
+# Run artifacts: local iteration only — the archive is the multicot org on HF
+output/
+# Staged inputs: pull from HF or rebuild (build_mgsm_subset)
+data/

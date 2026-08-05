@@ -10,17 +10,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 
-def find_latest_run(runs_root: str = "output/logprob_pivots/runs") -> str:
-    if not os.path.isdir(runs_root):
-        raise FileNotFoundError(f"No runs directory found at {runs_root!r}")
-    candidates = [
-        os.path.join(runs_root, d)
-        for d in os.listdir(runs_root)
-        if d.startswith("run_") and os.path.isdir(os.path.join(runs_root, d))
-    ]
-    if not candidates:
-        raise FileNotFoundError(f"No run_* directories found under {runs_root!r}")
-    return sorted(candidates)[-1]
+from src.hf_fetching import latest_logprob_run_dir as find_latest_run
 
 
 def main():

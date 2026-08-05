@@ -484,6 +484,9 @@ def main() -> None:
     aligner = args.aligner
     store_matrix = not args.no_store_matrix
 
+    from src.hf_fetching import ensure_rollouts
+    ensure_rollouts(args.dataset)  # HF is canonical — fetch if not local
+
     rollouts_dir = (
         Path("output/rollouts") / args.dataset / args.model
         / f"temperature_{args.temperature}_top_p_{args.top_p}"

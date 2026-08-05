@@ -5,6 +5,61 @@ with absolute dates. Routine refactors, chores, and doc edits get no entry.
 
 ---
 
+## 2026-08-05 — Local data deleted; code now fetches from HF as the canonical source
+
+**Method:** with all artifacts verified on the Hub (file counts matched exactly and a
+spot-checked file was byte-identical), deleted every local/git duplicate: the rollout
+trees, the VM snapshot, the logprob run outputs, and the git-tracked (`git add -f`'d)
+copies of all of them; `data/mgsm_subset.csv` was untracked (kept on disk as a staged
+input). `output/` and `data/` are now fully gitignored. Pre-deletion copies remain in
+git history.
+
+Added `src/hf_fetching.py` (`CANONICAL_DATASETS` registry + `ensure_mgsm_subset` /
+`ensure_logprob_runs` / `latest_logprob_run_dir` / `ensure_rollouts`) and wired it into
+`generate_cot`, the five logprob analysis stages (replacing their duplicated
+`find_latest_run`), and `compute_importance` / `align_chunks` / `make_figures`.
+
+**Result:** verified from a fully empty `output/`: `eval_accuracy` auto-fetched the
+published runs and rebuilt the accuracy table; `ensure_rollouts("mmmlu")` fetched the
+published tree. Smoke test 31/31. A fresh clone now needs no local data at all.
+
+**Next steps:** update `CANONICAL_DATASETS` whenever a new canonical artifact is
+published.
+
+## 2026-08-05 — All HF artifacts moved to the multicot org, made public (follow-up)
+
+Correction to the entry below: the project now has an HF org, **https://huggingface.co/multicot** —
+everything lives there, public, and the `kunwar45/` URLs below are obsolete:
+- https://huggingface.co/datasets/multicot/2026-01-01-mgsm-subset-en-es-fr-de (new: the fixed MGSM input subset)
+- https://huggingface.co/datasets/multicot/2026-01-03-logprob-pivots-qwen25-05b-mgsm-runs
+- https://huggingface.co/datasets/multicot/2026-04-30-rollout-importance-pilot-rollouts
+- https://huggingface.co/datasets/multicot/2026-05-04-rollout-importance-vm-results
+- hf://buckets/multicot/rollout-scratch (mutable staging bucket for in-progress rollout
+  syncs, layout `rollouts/<run-id>/<dataset>/<model>/...`)
+
+Publishing defaults flipped to public + `HF_NAMESPACE=multicot`. Note: the `.env`
+`HF_TOKEN` has org write access; the cached `hf auth login` token does not.
+
+## 2026-08-05 — Hugging Face publishing policy adopted; existing artifacts published
+
+**Method:** ported the reference repo's data policy: datasets, run artifacts and eval
+results live on the HF Hub, not in git or only on local disk. `src/hf_publishing.py`
+enforces the repo naming rule (`<YYYY-MM-DD>-<short-description>`, date generated) and
+the required dataset-card fields (experiment, date_generated, track, languages, models,
+provenance, source_repo+SHA) in code; `scripts/publish_to_hf.py` is the one entrypoint.
+Repos are private by default.
+
+**Result:** all pre-existing artifacts published (private, under `kunwar45/`):
+- https://huggingface.co/datasets/kunwar45/2026-01-03-logprob-pivots-qwen25-05b-mgsm-runs
+  (the three generation runs: accuracy tables, sentence pivot scores, redo-scaffold results)
+- https://huggingface.co/datasets/kunwar45/2026-04-30-rollout-importance-pilot-rollouts
+  (local pilot rollout trees for mgsm/mmath/mmmlu, 260 files)
+- https://huggingface.co/datasets/kunwar45/2026-05-04-rollout-importance-vm-results
+  (frozen GCP VM results snapshot, 320 files)
+
+**Next steps:** publish each future run as it completes and record the URL in its LOG
+entry; use `--repo-type model` when a trained model organism/adapter exists.
+
 ## 2026-08-05 — Repository restructured to src/scripts/scratch layout with explicit naming
 
 **Method:** Reorganized the flat `exp1/` + `multicot/` layout into the
