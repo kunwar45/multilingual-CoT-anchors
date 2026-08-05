@@ -22,4 +22,4 @@ python-dotenv>=1.0.0
 tqdm>=4.65.0
 pkld>=1.0.0  # For caching/pickling decorator, see whitebox-analyses/README_on_pkld_decorator.md
 fasttext>=0.9.2
-bitsandbytes>=0.43.0
+bitsandbytes>=0.43.0pysbd

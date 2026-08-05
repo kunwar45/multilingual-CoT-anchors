@@ -34,7 +34,7 @@ figures/*.png
 figures/*.pdf
 
 # Vertex per-run configs (contain injected API keys)
-vertex_jobs/runs/
+configs/vertex/runs/
 
 # IDE
 .idea/
@@ -47,3 +47,5 @@ vertex_jobs/runs/
 # Caches
 .cache/
 *.pkljar/
+# macOS AppleDouble files
+._*

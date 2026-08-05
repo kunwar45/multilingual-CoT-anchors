@@ -36,8 +36,8 @@ RUN pip install --no-cache-dir google-cloud-storage
 COPY . /app
 WORKDIR /app
 
-# Make the multicot package importable
+# Make the src package importable
 ENV PYTHONPATH=/app
 
 # Default entrypoint is the Vertex job runner; override for interactive use.
-ENTRYPOINT ["python", "scripts/vertex_job_runner.py"]
+ENTRYPOINT ["python", "scripts/vertex/vertex_job_runner.py"]
