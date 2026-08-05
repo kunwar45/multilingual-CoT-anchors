@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ABOUTME: v1 integration test: verified all v1 modules load and work together.
+# ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here.
 """
 Integration test: verify all modules load and work together.
 

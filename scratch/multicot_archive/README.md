@@ -1,3 +1,5 @@
+<!-- ABOUTME: Overview of the archived v1 'MultiCoT' pipeline that src/rollout_importance/ replaced. -->
+<!-- ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here. -->
 # Multilingual Chain-of-Thought Analysis (MultiCoT)
 
 Extension of Thought Anchors for multilingual reasoning analysis on MGSM.

@@ -1,6 +1,8 @@
+# ABOUTME: Chunk-level language verification with GlotLID: detects a trace drifting out of its expected language (language switches).
+# ABOUTME: Splits text via chunker.split_solution_into_chunks and checks each chunk with answer_extraction.verify_language.
 """Chunk-level language verification for multilingual CoT generation."""
 from src.rollout_importance.chunker import split_solution_into_chunks
-from src.rollout_importance.answer_utils import verify_language
+from src.rollout_importance.answer_extraction import verify_language
 
 
 def check_chunk_languages(text: str, expected_lang: str) -> dict:

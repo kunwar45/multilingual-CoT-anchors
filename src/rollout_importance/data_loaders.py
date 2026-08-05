@@ -1,3 +1,5 @@
+# ABOUTME: Dataset loaders (MGSM, MMATH, MMMLU, PolyMath) with stable cross-language problem IDs and a unified Problem dataclass.
+# ABOUTME: MGSM has NO Arabic — use en,fr,zh for MGSM and MMMLU/MMATH for ar; the loader raises a clear error if you forget.
 """
 Unified Dataset Interface for Multilingual CoT Experiments
 

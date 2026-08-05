@@ -1,3 +1,5 @@
+# ABOUTME: Sentence-level pivot scoring: per-token logprob gap between the instruct (reason) and base model.
+# ABOUTME: Pivot score = mean |log p_reason - log p_base| aggregated over the tokens in each sentence span.
 """
 Sentence-level pivot scoring utilities.
 

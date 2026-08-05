@@ -1,3 +1,5 @@
+# ABOUTME: v1 library: rollout generator with resume-safe JSONL writing.
+# ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here.
 """
 Rollout Generator with Resume-Safe JSONL Writing
 

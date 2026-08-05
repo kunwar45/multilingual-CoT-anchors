@@ -1,3 +1,5 @@
+# ABOUTME: Prompt builders for the two core conditions: prompt_target_cot (reason in the problem's language) and prompt_en_cot (reason in English).
+# ABOUTME: Both require the final numeric answer as `FINAL: <number>` so answers parse uniformly across languages.
 def prompt_target_cot(question: str, lang: str) -> str:
     """
     “Think in the same language as the question” condition.

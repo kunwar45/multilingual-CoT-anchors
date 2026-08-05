@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ABOUTME: Container entrypoint for Vertex AI jobs: runs the command after `--`, then uploads output/rollouts/ to GCS.
+# ABOUTME: Referenced by the root Dockerfile ENTRYPOINT; not meant to be run on a laptop.
 """
 Vertex AI job wrapper for multilingual-CoT-anchors experiments.
 

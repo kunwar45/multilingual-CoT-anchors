@@ -1,3 +1,5 @@
+# ABOUTME: Language-specific chunking of CoT traces into sentence-level chunks (en/fr/zh/ar), LaTeX-aware.
+# ABOUTME: Dispatches on language code; chunks are the unit of rollout generation, importance metrics, and alignment.
 """
 Language-specific chunking for chain-of-thought reasoning traces.
 

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# ABOUTME: Submits a Vertex AI Custom Job from a generated run config in configs/vertex/runs/.
+# ABOUTME: Third step of the Vertex flow; takes --project/--region/--display-name/--config.
 # Submit a Vertex AI Custom Job.
 # Usage:
 #   scripts/vertex/submit_vertex_job.sh \

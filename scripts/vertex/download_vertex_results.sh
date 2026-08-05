@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# ABOUTME: Downloads a finished Vertex run's artifacts from its GCS URI to a local directory.
+# ABOUTME: Final step of the Vertex flow; results should then be published to HF, not kept locally.
 # Download Vertex run artifacts from GCS to a local directory.
 # Usage:
 #   scripts/vertex/download_vertex_results.sh \

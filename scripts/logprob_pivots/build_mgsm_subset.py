@@ -1,3 +1,5 @@
+# ABOUTME: logprob_pivots STAGE 1 (data): builds the fixed MGSM en/es/fr/de problem subset -> data/mgsm_subset.csv.
+# ABOUTME: Canonical copy lives on HF (multicot/2026-01-01-mgsm-subset-en-es-fr-de); this script regenerates it from source.
 import os
 import random
 import sys
@@ -10,7 +12,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.logprob_pivots.config import Config
+from src.logprob_pivots.experiment_config import Config
 
 
 def main():

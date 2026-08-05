@@ -1,3 +1,5 @@
+<!-- ABOUTME: Draft README for the multicot Hugging Face org page (org cards are edited via the HF web UI). -->
+<!-- ABOUTME: Keep in sync by hand when the dataset list or publishing policy changes. -->
 # multicot — language-invariant reasoning pivots in LLMs
 
 Do "redo / check / backtrack" reasoning pivots in chains of thought transfer across

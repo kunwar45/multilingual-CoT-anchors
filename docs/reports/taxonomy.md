@@ -1,3 +1,5 @@
+<!-- ABOUTME: Draft taxonomy of failure modes observed in the MGSM multilingual CoT experiments. -->
+<!-- ABOUTME: Qualitative labels used when inspecting traces; not consumed by any code. -->
 # Error taxonomy (draft)
 
 This document summarizes a small, structured taxonomy of failure modes

@@ -1,3 +1,5 @@
+# ABOUTME: v1 library: two-stage importance computation (sensitivity pass then full resampling).
+# ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here.
 """
 Two-Stage Importance Computation
 

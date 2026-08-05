@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ABOUTME: v1 smoke test: verified the model loads and generates output.
+# ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here.
 """
 Smoke test: verify model loads and generates output.
 

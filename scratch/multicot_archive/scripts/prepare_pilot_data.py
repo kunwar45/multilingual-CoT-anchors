@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ABOUTME: v1 driver: selected 20 MGSM pilot problems and exported them to JSONL.
+# ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here.
 """
 Prepare pilot dataset: select 20 MGSM problems and export to JSONL.
 

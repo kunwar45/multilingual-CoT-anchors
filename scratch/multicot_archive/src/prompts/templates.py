@@ -1,3 +1,5 @@
+# ABOUTME: v1 library: prompting templates for controlled language conditions (P_L, T_L, A_L).
+# ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here.
 """
 Prompting Templates for Multilingual Chain-of-Thought
 

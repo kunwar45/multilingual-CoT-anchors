@@ -1,3 +1,5 @@
+# ABOUTME: rollout_importance STAGE 1: async API generation of base solutions and counterfactual rollouts (chunk i removed, resampled).
+# ABOUTME: Run ONLY as python -m src.rollout_importance.generate_rollouts (parses args at import); writes the output/rollouts/ tree.
 """
 Multilingual Rollout Generation
 
@@ -24,12 +26,12 @@ from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
 from src.rollout_importance.data_loaders import load_dataset_problems, Problem
-from src.rollout_importance.answer_utils import (
+from src.rollout_importance.answer_extraction import (
     split_solution_into_chunks,
     extract_answer,
     check_answer_for_problem,
 )
-from src.rollout_importance.lang_verifier import check_chunk_languages
+from src.rollout_importance.language_verification import check_chunk_languages
 from src.rollout_importance.prompts import build_base_solution_prompt, build_rollout_prompt
 
 # Load environment variables

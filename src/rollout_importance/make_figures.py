@@ -1,3 +1,5 @@
+# ABOUTME: rollout_importance STAGE 4: five cross-language comparison plot types from compute_importance output.
+# ABOUTME: Reads chunks_labeled.json under output/rollouts/; writes figures to output/figures/ (local iteration only).
 """
 Multilingual CoT Visualization
 

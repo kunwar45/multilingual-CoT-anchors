@@ -1,3 +1,5 @@
+# ABOUTME: logprob_pivots STAGE 7 (figures): plots accuracy and pivot-score results for a run.
+# ABOUTME: Defaults to the latest run under output/logprob_pivots/runs/; figures are local iteration artifacts only.
 import os
 import sys
 

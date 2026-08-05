@@ -1,3 +1,5 @@
+# ABOUTME: Answer extraction, checking, and normalization for model outputs (numeric + LaTeX), plus the GlotLID verify_language helper.
+# ABOUTME: Shared by rollout generation, importance computation, and the smoke test; LaTeX normalization adapted from the upstream thought-anchors codebase.
 """
 Core Utilities for Multilingual CoT Experiments
 

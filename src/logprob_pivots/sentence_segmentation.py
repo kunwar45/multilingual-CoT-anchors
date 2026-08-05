@@ -1,3 +1,5 @@
+# ABOUTME: pysbd sentence segmentation returning character-level spans for each sentence of a reasoning trace.
+# ABOUTME: Char spans keep downstream token/activation alignment tokenizer-agnostic; used by pivot scoring and the redo scaffold.
 """
 Sentence segmentation utilities.
 

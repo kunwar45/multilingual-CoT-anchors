@@ -1,3 +1,5 @@
+# ABOUTME: Git ignore rules: blocks data/, output/, secrets, and ALL *.json/*.csv/*.png result files.
+# ABOUTME: Results are published to the multicot org on Hugging Face, never committed — do not git add -f around this.
 *.pkl
 *.json
 *.zip

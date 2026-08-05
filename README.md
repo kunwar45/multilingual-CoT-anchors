@@ -1,3 +1,5 @@
+<!-- ABOUTME: Public front page: what the language-invariant reasoning pivots project is and how the two tracks differ. -->
+<!-- ABOUTME: Agents should read CLAUDE.md instead — it is the operational guide for this repo. -->
 # multilingual-CoT-anchors
 
 Do "redo / check / backtrack" reasoning pivots in LLM chains of thought transfer across

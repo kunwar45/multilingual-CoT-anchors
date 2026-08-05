@@ -1,3 +1,5 @@
+<!-- ABOUTME: Defines the proxy task (choosing reasoning language per problem) and its success metrics. -->
+<!-- ABOUTME: Reference for what counts as a win in the Target-CoT vs En-CoT comparison. -->
 # Proxy task and success metrics
 
 ## Proxy task

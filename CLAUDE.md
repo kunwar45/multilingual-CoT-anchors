@@ -1,3 +1,5 @@
+<!-- ABOUTME: Repo guide for AI agents: project overview, directory contract, pipelines, HF publishing policy, gotchas. -->
+<!-- ABOUTME: Curated by humans — agents must not edit it unless specifically asked to. -->
 # CLAUDE.md — repo guide for agents
 
 **AI agents: do NOT write to this file unless specifically asked to — and even when asked,
@@ -40,7 +42,7 @@ src/                    correctness-critical reusable code (import as src.*):
                           helpers — pipeline stages auto-download missing inputs, so a
                           fresh clone runs with no local data
   logprob_pivots/         pivot-score library:
-                            config.py                frozen Config dataclass (models, langs, gen params)
+                            experiment_config.py     frozen Config dataclass (models, langs, gen params)
                             sentence_segmentation.py pysbd segmentation → char spans
                             pivot_scores.py          logprob-gap pivot scores per sentence
                             prompts.py               prompt_target_cot / prompt_en_cot
@@ -48,8 +50,8 @@ src/                    correctness-critical reusable code (import as src.*):
                             data_loaders.py          MGSM / MMATH / MMMLU / PolyMath loaders
                             chunker.py               language-specific chunking (en/fr/zh/ar), LaTeX-aware
                             prompts.py               base-solution / rollout / DAG-labeling prompts
-                            answer_utils.py          answer extraction, checking, normalization
-                            lang_verifier.py         GlotLID chunk-level language detection
+                            answer_extraction.py     answer extraction, checking, normalization
+                            language_verification.py GlotLID chunk-level language detection
                             generate_rollouts.py     STAGE 1: async API rollout generation
                             compute_importance.py    STAGE 2: 6 importance metrics + GPT-4o DAG labeling
                             align_chunks.py          STAGE 3: LaBSE DP cross-lingual chunk alignment
@@ -59,7 +61,7 @@ scripts/                pipeline drivers; a script pipes src/ functions together
   publish_to_hf.py        THE publishing entrypoint: pushes an artifact to the HF Hub with
                           an enforced dataset card (spans both tracks, hence top-level)
   logprob_pivots/         one script per pipeline stage — see "The pipelines" below
-  vertex/                 Vertex AI job infra: build_and_push.sh → create_vertex_run_config.py →
+  vertex/                 Vertex AI job infra: build_and_push_docker_image.sh → create_vertex_run_config.py →
                           submit_vertex_job.sh → download_vertex_results.sh;
                           vertex_job_runner.py is the container entrypoint (runs the
                           command after `--`, uploads output/rollouts/ to GCS)
@@ -99,7 +101,14 @@ work without hacks.
   default to `scratch/` until the code earns promotion.
 - **Names are self-describing.** A module or script name states what it computes or
   produces (`compute_pivot_scores.py`, `generate_rollouts.py`) — never a bare `utils.py`,
-  `plots.py`, `run.py`, or `exp2/`. Stage drivers start with a verb.
+  `plots.py`, `run.py`, or `exp2/`. No abbreviations (`language_verification.py`, not
+  `lang_verifier.py`). Stage drivers start with a verb.
+- **Every file starts with an ABOUTME header.** The first two comment lines of every
+  file (after the shebang, if any) each begin with `ABOUTME:` and together say what the
+  file is and how it fits the repo — greppable via `grep -r "ABOUTME:"`. Python/shell/
+  YAML use `# ABOUTME: ...`; Markdown uses `<!-- ABOUTME: ... -->`; notebooks use a
+  leading markdown cell. Exceptions: `.gitkeep` (must stay empty) and JSON (no comment
+  syntax). When you add a file, add its ABOUTME; when a file's purpose changes, update it.
 - **Integrate, don't tack on.** Extend the existing module rather than adding
   `foo_v2.py` / `foo_new.py` siblings. Superseded code goes to git history (or
   `scratch/*_archive/` if it must stay visible), not next to the live copy.
@@ -232,7 +241,7 @@ Stages 3–7 default to the **latest** run under `output/logprob_pivots/runs/`; 
 ### Vertex AI jobs (heavy rollout_importance runs on GCP)
 
 ```bash
-bash scripts/vertex/build_and_push.sh [TAG]         # docker build + push (uses Dockerfile at root)
+bash scripts/vertex/build_and_push_docker_image.sh [TAG]   # docker build + push (uses Dockerfile at root)
 python scripts/vertex/create_vertex_run_config.py --template experiment_a100.yaml ...
                                                     # → configs/vertex/runs/<ts>_<name>.yaml (keys injected — DO NOT COMMIT)
 bash scripts/vertex/submit_vertex_job.sh --project <p> --display-name <n> --config configs/vertex/runs/<file>.yaml

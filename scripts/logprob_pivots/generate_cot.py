@@ -1,3 +1,5 @@
+# ABOUTME: logprob_pivots STAGE 2 (generate): produces Target-CoT and En-CoT traces with both Qwen models.
+# ABOUTME: Writes output/logprob_pivots/runs/run_<unix_ts>/generations.jsonl; auto-fetches the MGSM subset from HF if data/ is empty.
 
 import argparse
 import os
@@ -15,7 +17,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.logprob_pivots.config import Config
+from src.logprob_pivots.experiment_config import Config
 from src.logprob_pivots.prompts import prompt_target_cot, prompt_en_cot
 
 FINAL_RE = re.compile(r"FINAL:\s*([-+]?\d+(\.\d+)?)")

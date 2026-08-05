@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
+# ABOUTME: Builds the repo Dockerfile and pushes the image to GCR for Vertex AI jobs.
+# ABOUTME: First step of the Vertex flow: build/push -> create_vertex_run_config.py -> submit_vertex_job.sh -> download_vertex_results.sh.
 # Build and push the Docker image to GCR.
 # Usage:
-#   scripts/vertex/build_and_push.sh [TAG]        # default tag: latest
-#   scripts/vertex/build_and_push.sh v20260430    # versioned tag
+#   scripts/vertex/build_and_push_docker_image.sh [TAG]        # default tag: latest
+#   scripts/vertex/build_and_push_docker_image.sh v20260430    # versioned tag
 
 set -euo pipefail
 

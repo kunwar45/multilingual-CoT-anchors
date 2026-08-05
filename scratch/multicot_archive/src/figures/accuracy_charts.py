@@ -1,3 +1,5 @@
+# ABOUTME: v1 library: accuracy comparison plots across conditions and languages.
+# ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here.
 """
 Accuracy Chart Visualizations
 

@@ -1,3 +1,5 @@
+# ABOUTME: logprob_pivots STAGE 5 (intervention): pivot-triggered redo scaffold -> redo_scaffold_reason.csv.
+# ABOUTME: Branches the CoT at high-pivot sentences and resamples; compares against random/heuristic redo baselines.
 import argparse
 import os
 import random
@@ -15,7 +17,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.logprob_pivots.config import Config
+from src.logprob_pivots.experiment_config import Config
 from src.logprob_pivots.sentence_segmentation import sentence_spans
 
 FINAL_RE = re.compile(r"FINAL:\s*([-+]?\d+(\.\d+)?)")

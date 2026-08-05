@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ABOUTME: Generates a per-run Vertex job YAML from a configs/vertex/ template, INJECTING API keys from .env.
+# ABOUTME: Output goes to configs/vertex/runs/ which is gitignored BECAUSE of those keys — never commit generated configs.
 """
 Generate a per-run Vertex AI YAML config from a template.
 Reads HF_TOKEN and OPENAI_API_KEY from local .env if present.

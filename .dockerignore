@@ -1,3 +1,5 @@
+# ABOUTME: Docker build-context excludes for the Vertex AI image (Dockerfile at repo root).
+# ABOUTME: Keeps .env secrets, venv/, caches, and local run artifacts out of the pushed image.
 .git
 .env
 venv/

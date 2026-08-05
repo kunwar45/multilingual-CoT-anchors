@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ABOUTME: v1 driver: segmented rollouts into sentences and computed sensitivity/importance scores.
+# ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here.
 """
 Analyze rollouts: segment into sentences, compute sensitivity scores,
 and optionally compute full importance for candidate anchors.

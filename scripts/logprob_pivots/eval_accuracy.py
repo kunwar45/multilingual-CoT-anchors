@@ -1,3 +1,5 @@
+# ABOUTME: logprob_pivots STAGE 3 (accuracy): scores generations -> accuracy_by_lang_cond_model.csv in the run dir.
+# ABOUTME: Defaults to the latest run under output/logprob_pivots/runs/; pass --run-dir for an older one.
 import argparse
 import os
 import sys

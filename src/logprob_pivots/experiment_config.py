@@ -1,3 +1,5 @@
+# ABOUTME: Frozen Config dataclass for the logprob_pivots track: dataset, model pair, languages, generation parameters.
+# ABOUTME: Single source of run defaults consumed by every scripts/logprob_pivots/ stage; YAML overrides live in configs/logprob_pivots/.
 from dataclasses import dataclass
 
 @dataclass(frozen=True)

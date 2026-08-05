@@ -1,3 +1,5 @@
+<!-- ABOUTME: Draft MATS application writeup: question, motivation, methods, and preliminary results. -->
+<!-- ABOUTME: Narrative document; numbers come from runs archived in the multicot HF org. -->
 # Language-Invariant Reasoning Anchors (draft MATS writeup)
 
 ## 1. Question and motivation

@@ -1,9 +1,30 @@
+<!-- ABOUTME: Append-only research log, most recent first: hypothesis, method, result, next steps per entry. -->
+<!-- ABOUTME: Never rewrite a past entry — correct with a follow-up line; every published HF repo URL must be recorded here. -->
 # Research log — append-only, MOST RECENT FIRST
 
 One entry per real result or major code change: hypothesis → method → result → next steps,
 with absolute dates. Routine refactors, chores, and doc edits get no entry.
 
 ---
+
+## 2026-08-05 — File-name clarity pass + ABOUTME headers on every file
+
+**Method:** repo-wide audit of file names for clarity; renamed the stragglers with
+`git mv` and fixed all imports/references: `src/logprob_pivots/config.py` →
+`experiment_config.py`, `src/rollout_importance/answer_utils.py` →
+`answer_extraction.py`, `src/rollout_importance/lang_verifier.py` →
+`language_verification.py`, `scripts/vertex/build_and_push.sh` →
+`build_and_push_docker_image.sh`, `scratch/___dummy.ipynb` →
+`empty_scratch_notebook.ipynb`. Added a two-line `ABOUTME:` comment header to every
+file in the repo (87 files, including the `multicot_archive`; exceptions: `.gitkeep`
+must stay empty, JSON has no comments). Both policies are now codified in CLAUDE.md
+("Names are self-describing" / "Every file starts with an ABOUTME header"). Older
+entries below reference the pre-rename paths; they remain correct for their time.
+
+**Result:** rollout smoke test 28 passed / 0 failed / 4 skipped (skips = missing local
+data, expected since HF is canonical); `smoke_test_models` exits 0 with both models
+generating; every tracked Python file byte-compiles; YAML configs and the notebook
+still parse.
 
 ## 2026-08-05 — Local data deleted; code now fetches from HF as the canonical source
 

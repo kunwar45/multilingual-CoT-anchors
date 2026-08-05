@@ -1,3 +1,5 @@
+# ABOUTME: Fetches canonical project data from the Hugging Face multicot org: CANONICAL_DATASETS registry + ensure_* helpers.
+# ABOUTME: Pipeline stages call these so a fresh clone runs with no local data; update CANONICAL_DATASETS whenever publishing new canonical data.
 """Fetch canonical project data from the Hugging Face Hub.
 
 HF is the canonical data source for this project (CLAUDE.md "Datasets ... go to

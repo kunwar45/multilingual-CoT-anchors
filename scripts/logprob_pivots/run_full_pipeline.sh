@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# ABOUTME: Runs the logprob_pivots pipeline end to end: smoke -> data -> generate -> accuracy -> pivots -> redo scaffold.
+# ABOUTME: Each stage is also runnable alone via python -m scripts.logprob_pivots.<stage>; see CLAUDE.md pipeline table.
 set -euo pipefail
 
 # Simple end-to-end runner for the main pipeline.

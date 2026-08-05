@@ -1,3 +1,5 @@
+# ABOUTME: Vertex AI Custom Job template for a fast infra smoke test on an L4 (Qwen2.5-7B, 2 problems).
+# ABOUTME: Never edit or submit directly — scripts/vertex/create_vertex_run_config.py fills the placeholders into configs/vertex/runs/.
 # Vertex AI Custom Job — smoke test on L4 GPU.
 # Uses Qwen2.5-7B-Instruct (fits in 24 GB), 2 problems, 5 rollouts.
 # Purpose: fast infra/packaging sanity check, not a real experiment.

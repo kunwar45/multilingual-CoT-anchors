@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ABOUTME: v1 driver: compared metrics across language conditions.
+# ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here.
 """
 Compare metrics across language conditions.
 

@@ -1,3 +1,5 @@
+# ABOUTME: logprob_pivots STAGE 0 (smoke): verifies the Qwen2.5-0.5B base and instruct models both load and generate.
+# ABOUTME: Run with venv/bin/python -m scripts.logprob_pivots.smoke_test_models before touching this track.
 import os
 import sys
 
@@ -9,7 +11,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.logprob_pivots.config import Config
+from src.logprob_pivots.experiment_config import Config
 
 
 def pick_device(cfg: Config) -> torch.device:

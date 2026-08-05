@@ -1,3 +1,5 @@
+# ABOUTME: Publishes run artifacts to the Hugging Face Hub, enforcing the CLAUDE.md policy in code.
+# ABOUTME: Rejects repo names not matching <YYYY-MM-DD>-<short-description> and uploads missing required dataset-card fields; CLI is scripts/publish_to_hf.py.
 """Publish run artifacts (datasets, eval results, model files) to the Hugging Face Hub.
 
 Implements the policy in CLAUDE.md ("Datasets, run artifacts and eval results go to

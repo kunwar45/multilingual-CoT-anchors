@@ -1,3 +1,5 @@
+# ABOUTME: CUDA container image for heavy rollout_importance runs on Vertex AI.
+# ABOUTME: Entrypoint is scripts/vertex/vertex_job_runner.py; built/pushed by scripts/vertex/build_and_push_docker_image.sh.
 FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive

@@ -1,10 +1,11 @@
+# ABOUTME: Package marker for the logprob_pivots track library: pivot scores, segmentation, prompts, config.
+# ABOUTME: Import as src.logprob_pivots.<module> from the repo root (scripts run via python -m ensure sys.path is right).
 """
-Project-wide Python package for code under `src/`.
-
-Having this file ensures `src` is treated as a package and can be imported
-as `import src` or `from src.config import Config` when the project root
-is on `sys.path` (e.g., when running `python -m scripts.some_module` from
-the project root).
+logprob_pivots track library: pivot scores, sentence segmentation, prompts,
+and the frozen experiment config. Import as `src.logprob_pivots.<module>`
+(e.g. `from src.logprob_pivots.experiment_config import Config`) with the
+project root on `sys.path` — running scripts via `python -m` from the repo
+root guarantees that.
 """
 
 

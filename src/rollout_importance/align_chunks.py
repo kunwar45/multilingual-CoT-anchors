@@ -1,3 +1,5 @@
+# ABOUTME: rollout_importance STAGE 3: cross-lingual chunk alignment via LaBSE embeddings and monotone maximum-weight DP.
+# ABOUTME: Aligns semantically equivalent reasoning chunks between two language traces of the same problem.
 """
 Cross-Language Step Alignment
 

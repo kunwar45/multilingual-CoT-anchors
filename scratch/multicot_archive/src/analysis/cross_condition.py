@@ -1,3 +1,5 @@
+# ABOUTME: v1 library: cross-condition comparison of importance patterns and accuracy.
+# ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here.
 """
 Cross-Condition Analysis
 

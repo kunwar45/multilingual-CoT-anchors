@@ -1,3 +1,5 @@
+# ABOUTME: rollout_importance STAGE 2: six counterfactual importance metrics per chunk + GPT-4o DAG labeling.
+# ABOUTME: Run ONLY as python -m (parses args at import); OpenAI client stays lazily initialized so offline paths need no OPENAI_API_KEY.
 """
 Multilingual Rollout Analysis
 
@@ -22,7 +24,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 from src.rollout_importance.data_loaders import load_dataset_problems, Problem
-from src.rollout_importance.answer_utils import (
+from src.rollout_importance.answer_extraction import (
     normalize_answer,
     normalize_latex,
     extract_answer,

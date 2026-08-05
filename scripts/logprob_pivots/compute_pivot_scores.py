@@ -1,3 +1,5 @@
+# ABOUTME: logprob_pivots STAGE 4 (pivots): sentence-level pivot scores from the base-vs-instruct logprob gap -> sentence_pivots.csv.
+# ABOUTME: Pivot score = mean |delta logprob| over the tokens in each pysbd sentence span; core logic in src/logprob_pivots/pivot_scores.py.
 import argparse
 import os
 import sys
@@ -12,7 +14,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.logprob_pivots.config import Config
+from src.logprob_pivots.experiment_config import Config
 from src.logprob_pivots.pivot_scores import sentence_pivot_scores
 
 

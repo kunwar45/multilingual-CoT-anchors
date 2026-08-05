@@ -1,3 +1,5 @@
+# ABOUTME: THE publishing entrypoint: pushes any run artifact to the Hugging Face multicot org.
+# ABOUTME: Thin CLI over src.hf_publishing, which enforces repo naming and required dataset-card fields; spans both tracks.
 """Publish a run artifact (dataset, eval results, model files) to the Hugging Face Hub.
 
 Thin CLI over src.hf_publishing — enforces the repo naming policy

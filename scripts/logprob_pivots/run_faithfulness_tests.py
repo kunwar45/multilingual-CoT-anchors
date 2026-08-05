@@ -1,3 +1,5 @@
+# ABOUTME: logprob_pivots STAGE 6 (faithfulness): answer-flip tests under truncation and trace swaps.
+# ABOUTME: STILL A STUB on real truncated generations — see CLAUDE.md pipeline table before trusting output.
 import argparse
 import json
 import os

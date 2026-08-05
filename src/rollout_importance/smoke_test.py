@@ -1,3 +1,5 @@
+# ABOUTME: 31 offline checks covering every rollout_importance module — no API calls, ~1 minute.
+# ABOUTME: Run after ANY change to this track: venv/bin/python -m src.rollout_importance.smoke_test.
 """
 Smoke test for the multilingual CoT pipeline.
 
@@ -43,9 +45,9 @@ def run_test(name: str, fn):
 
 def test_imports():
     from src.rollout_importance.chunker import split_solution_into_chunks
-    from src.rollout_importance.lang_verifier import check_chunk_languages
+    from src.rollout_importance.language_verification import check_chunk_languages
     from src.rollout_importance.data_loaders import MGSMLoader, MMATHLoader, MMMMLULoader, PolyMathLoader, Problem, load_dataset_problems
-    from src.rollout_importance.answer_utils import (
+    from src.rollout_importance.answer_extraction import (
         extract_answer, check_answer_for_problem,
         normalize_answer, verify_language, parse_final_answer,
         extract_boxed_answers, extract_multiple_choice_answer,
@@ -115,7 +117,7 @@ def test_chunker_latex_aware():
 
 def test_extract_numeric_answer():
     from src.rollout_importance.data_loaders import Problem
-    from src.rollout_importance.answer_utils import extract_answer, check_answer_for_problem
+    from src.rollout_importance.answer_extraction import extract_answer, check_answer_for_problem
 
     p = Problem("mgsm_000", "mgsm", "en", "What is 2+2?", "4", "numeric")
     text = "Let me think. 2 + 2 = 4.\nFinal: 4"
@@ -127,7 +129,7 @@ def test_extract_numeric_answer():
 
 def test_extract_boxed_answer():
     from src.rollout_importance.data_loaders import Problem
-    from src.rollout_importance.answer_utils import extract_answer, check_answer_for_problem
+    from src.rollout_importance.answer_extraction import extract_answer, check_answer_for_problem
 
     p = Problem("mmath_001", "mmath", "en", "Solve x+1=3", "2", "latex_boxed")
     text = r"We get x = 2. Therefore \boxed{2}."
@@ -139,7 +141,7 @@ def test_extract_boxed_answer():
 
 def test_extract_multiple_choice():
     from src.rollout_importance.data_loaders import Problem
-    from src.rollout_importance.answer_utils import extract_answer, check_answer_for_problem
+    from src.rollout_importance.answer_extraction import extract_answer, check_answer_for_problem
 
     p = Problem("mmmlu_000", "mmmlu", "en", "What is 2+2?\nA.3\nB.4\nC.5\nD.6", "B", "multiple_choice")
     text = "The answer is B because 2+2=4.\nAnswer: B"
@@ -151,7 +153,7 @@ def test_extract_multiple_choice():
 
 def test_extract_fr_answer():
     from src.rollout_importance.data_loaders import Problem
-    from src.rollout_importance.answer_utils import extract_answer
+    from src.rollout_importance.answer_extraction import extract_answer
     p = Problem("mgsm_000", "mgsm", "fr", "2+2?", "4", "numeric")
     text = "Je calcule. 2 + 2 = 4.\nRéponse finale: 4"
     answer = extract_answer(text, p, "fr")
@@ -161,7 +163,7 @@ def test_extract_fr_answer():
 
 def test_extract_zh_answer():
     from src.rollout_importance.data_loaders import Problem
-    from src.rollout_importance.answer_utils import extract_answer
+    from src.rollout_importance.answer_extraction import extract_answer
     p = Problem("mgsm_000", "mgsm", "zh", "2+2?", "4", "numeric")
     text = r"计算得到 2 + 2 = 4。最终答案: 4"
     answer = extract_answer(text, p, "zh")
@@ -371,7 +373,7 @@ def test_plots_generate():
 
 def test_open_math_answer_extraction():
     """open_math answer type: boxed extraction and numeric checking."""
-    from src.rollout_importance.answer_utils import extract_answer, check_answer_for_problem
+    from src.rollout_importance.answer_extraction import extract_answer, check_answer_for_problem
     from src.rollout_importance.data_loaders import Problem
 
     # \boxed{} extraction

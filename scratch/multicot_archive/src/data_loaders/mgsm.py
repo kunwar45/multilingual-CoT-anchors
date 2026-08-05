@@ -1,3 +1,5 @@
+# ABOUTME: v1 library: MGSM dataset loader with stable cross-language problem IDs.
+# ABOUTME: Superseded v1 (pre-2026-08-05) code kept for reference only — the live pipeline is src/rollout_importance/; nothing imports from here.
 """
 MGSM (Multilingual Grade School Math) Dataset Loader
 

@@ -1,3 +1,5 @@
+# ABOUTME: Prompt templates for the rollout track: per-language base-solution prompts, rollout continuation prompts, GPT-4o DAG-labeling prompt.
+# ABOUTME: DAG-labeling prompt adapted from the upstream thought-anchors codebase (its 'root prompts.py').
 """
 Multilingual Prompts for CoT Experiments
 
