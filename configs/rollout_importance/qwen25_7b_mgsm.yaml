@@ -1,0 +1,24 @@
+# ABOUTME: Run parameters for rollout_importance stage 1: Qwen2.5-7B-Instruct on MGSM en/fr/zh (fits an L4 GPU).
+# ABOUTME: Pass via --config; keys are the long option names of generate_rollouts.py, and explicit CLI flags override them.
+
+# A run varies three things — dataset, languages, model. Copy this file and change
+# those to define a new run. Locally:
+#   venv/bin/python -m src.rollout_importance.generate_rollouts --config configs/rollout_importance/qwen25_7b_mgsm.yaml
+# On GCP (model self-hosted on the job's GPU), inject via:
+#   python scripts/vertex/create_vertex_run_config.py --template smoke_l4.yaml \
+#       --run-config configs/rollout_importance/qwen25_7b_mgsm.yaml ...
+
+dataset: mgsm
+languages: en,fr,zh        # MGSM has no Arabic — use mmmlu (or mmath) for ar
+model: Qwen/Qwen2.5-7B-Instruct
+provider: Together         # Vertex templates override this with --provider Local
+
+base_solution_type: correct
+rollout_type: default
+
+num_problems: 250
+num_rollouts: 40
+temperature: 0.6
+top_p: 0.95
+max_tokens: 16384
+seed: 44

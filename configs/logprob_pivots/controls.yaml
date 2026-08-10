@@ -1,5 +1,5 @@
 # ABOUTME: Control/ablation settings for logprob_pivots pivot scoring (sentence boundaries, paraphrase and translation controls).
-# ABOUTME: Documents which confound each control addresses; consumed alongside configs/logprob_pivots/default.yaml.
+# ABOUTME: Documents which confound each control addresses; consumed alongside configs/logprob_pivots/qwen25_05b_mgsm.yaml.
 controls:
   sentence_boundaries:
     enabled: true

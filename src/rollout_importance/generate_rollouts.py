@@ -3,12 +3,16 @@
 """
 Multilingual Rollout Generation
 
-Mirrors the root generate_rollouts.py pipeline with multilingual support.
-Generates base solutions and rollouts for MGSM and MMATH datasets
-across en, fr, zh, ar languages.
+Adapted from the upstream thought-anchors generate_rollouts.py with multilingual
+support. Generates base solutions and counterfactual rollouts (chunk i removed,
+resampled) for MGSM / MMATH / MMMLU / PolyMath across en, fr, zh, ar.
 
-Providers: Together, Fireworks, Local
-Default model: meta-llama/Llama-3.2-3B-Instruct-Turbo
+Providers: Together, Fireworks, Vertex (self-hosted endpoint), Local (transformers).
+Run parameters come from CLI flags, optionally seeded by a YAML config
+(explicit flags override config values):
+
+    python -m src.rollout_importance.generate_rollouts \
+        --config configs/rollout_importance/qwen25_32b_mgsm.yaml
 """
 
 import os
@@ -17,6 +21,7 @@ import random
 import asyncio
 import argparse
 
+import yaml
 import numpy as np
 import torch
 import httpx
@@ -60,8 +65,8 @@ parser.add_argument("--data_dir", type=str, default=None,
 parser.add_argument("--difficulties", type=str, default=None,
                     help="PolyMath only: comma-separated difficulty tiers to include "
                          "(low,medium,high,top). Default: all four.")
-parser.add_argument("-m", "--model", type=str, default="Qwen/Qwen3.5-9B",
-                    help="Model to use")
+parser.add_argument("-m", "--model", type=str, default=None,
+                    help="Model to use (required unless set in --config)")
 parser.add_argument("-b", "--base_solution_type", type=str, default="correct",
                     choices=["correct", "incorrect"],
                     help="Type of base solution to generate")
@@ -103,6 +108,9 @@ parser.add_argument("--max_language_retries", type=int, default=3,
                     help="Max retries for language verification")
 parser.add_argument("--max_retries", type=int, default=3,
                     help="Max retries for API requests")
+parser.add_argument("--max_concurrent_requests", type=int, default=6,
+                    help="Concurrent in-flight API requests; keep low for rate-limited "
+                         "providers, raise (e.g. 32) against a dedicated vLLM server")
 parser.add_argument("--skip_recalculate", action="store_true", default=False,
                     help="Skip recalculating accuracy for existing rollouts")
 parser.add_argument("--include_problems", type=str, default=None,
@@ -113,8 +121,35 @@ parser.add_argument("--include_chunks", type=str, default=None,
                     help="Comma-separated list of chunk indices to include")
 parser.add_argument("--output_suffix", type=str, default=None,
                     help="Suffix for output directory")
+parser.add_argument("--config", type=str, default=None,
+                    help="YAML config whose keys are long option names (see "
+                         "configs/rollout_importance/qwen25_32b_mgsm.yaml); explicit CLI flags override it")
+
+# Apply --config values as parser defaults before parsing, so explicit CLI flags win.
+_config_probe = argparse.ArgumentParser(add_help=False)
+_config_probe.add_argument("--config", type=str, default=None)
+_probe_args, _ = _config_probe.parse_known_args()
+if _probe_args.config:
+    with open(_probe_args.config, "r", encoding="utf-8") as f:
+        _config_values = yaml.safe_load(f) or {}
+    _valid_keys = {action.dest for action in parser._actions}
+    _unknown_keys = sorted(set(_config_values) - _valid_keys)
+    if _unknown_keys:
+        parser.error(f"unknown key(s) in {_probe_args.config}: {', '.join(_unknown_keys)}")
+    # Comma-separated CLI strings (languages, include_problems, ...) may be YAML lists
+    _config_values = {
+        key: ",".join(map(str, value)) if isinstance(value, list) else value
+        for key, value in _config_values.items()
+    }
+    parser.set_defaults(**_config_values)
+    for action in parser._actions:
+        if action.dest in _config_values:
+            action.required = False
 
 args = parser.parse_args()
+
+if not args.model:
+    parser.error("no model specified — pass -m/--model or set `model:` in a --config file")
 
 # Validate provider keys
 if args.provider == "Together" and not TOGETHER_API_KEY:
@@ -124,8 +159,9 @@ elif args.provider == "Fireworks" and not FIREWORKS_API_KEY:
 elif args.provider == "Vertex" and not VERTEX_API_BASE_URL:
     raise ValueError("VERTEX_API_BASE_URL not set — add it to .env (e.g. http://<vm-ip>:8000/v1)")
 
-# Global semaphore: cap concurrent API requests well below the 10 QPS rate limit
-_API_SEM = asyncio.Semaphore(6)
+# Global semaphore: default 6 keeps hosted providers under ~10 QPS rate limits;
+# a dedicated vLLM server wants --max_concurrent_requests 32+ to keep the GPU busy
+_API_SEM = asyncio.Semaphore(args.max_concurrent_requests)
 
 # Set random seeds
 random.seed(args.seed)
@@ -487,6 +523,58 @@ def _log(language: str, problem_id: str, msg: str) -> None:
     print(f"[{language}] {problem_id}: {msg}")
 
 
+def _describe_switch(switch_info: Dict) -> str:
+    sw = switch_info["switches"][0]
+    return (f"chunk {switch_info['first_switch_chunk_idx']}/{switch_info['chunks_checked'] - 1} "
+            f"(detected: {sw['detected_lang']}, conf: {sw['confidence']:.2f})")
+
+
+async def verify_language_with_retries(text, language, problem_id, regenerate, context):
+    """GlotLID-verify a generation; regenerate on language switch, up to args.max_language_retries.
+
+    `regenerate` is a zero-arg callable returning an awaitable make_api_request-style
+    response dict. If the switch persists after the last retry, the last generation is
+    kept and returned with its switch metadata; on a generation error mid-retry, the
+    original text is kept. Returns (text, switch_info, retry_count).
+    """
+    if not args.verify_language or language == "en":
+        return text, None, 0
+
+    switch_info = check_chunk_languages(text, language)
+    if not switch_info["has_switch"]:
+        return text, switch_info, 0
+
+    _log(language, problem_id,
+         f"Language switch in {context} at {_describe_switch(switch_info)}. "
+         f"Retry 1/{args.max_language_retries}.")
+
+    retry_count = 0
+    for attempt in range(1, args.max_language_retries + 1):
+        response = await regenerate()
+        if "error" in response:
+            _log(language, problem_id, f"Language retry {attempt} for {context}: generation error.")
+            return text, switch_info, retry_count
+
+        retry_text = response["text"]
+        retry_info = check_chunk_languages(retry_text, language)
+        retry_count = attempt
+
+        if not retry_info["has_switch"]:
+            _log(language, problem_id, f"Language OK after retry {attempt} for {context}.")
+            return retry_text, retry_info, retry_count
+
+        switch_info = retry_info
+        _log(language, problem_id,
+             f"Language switch persists in {context} (retry {attempt}/{args.max_language_retries}) "
+             f"at {_describe_switch(retry_info)}.")
+        if attempt == args.max_language_retries:
+            _log(language, problem_id,
+                 f"Max language retries reached for {context}. Saving with switch metadata.")
+            return retry_text, retry_info, retry_count
+
+    return text, switch_info, retry_count
+
+
 async def generate_base_solution(
     problem: Problem,
     language: str,
@@ -497,7 +585,7 @@ async def generate_base_solution(
     _log(language, pid, f"START base solution (temperature={temperature}, provider={args.provider})")
     prompt = build_base_solution_prompt(problem, language)
 
-    max_retries = 3
+    max_retries = args.max_retries
     retry_delay = 2
 
     for attempt in range(max_retries):
@@ -514,47 +602,13 @@ async def generate_base_solution(
             solution_text = response["text"]
 
             # Chunk-level language verification
-            language_switch_info = None
-            language_switch_retry_count = 0
-
-            if args.verify_language and language != "en":
-                switch_info = check_chunk_languages(solution_text, language)
-                language_switch_info = switch_info
-
-                if switch_info["has_switch"]:
-                    sw = switch_info["switches"][0]
-                    _log(language, pid,
-                         f"Language switch in base solution at chunk "
-                         f"{switch_info['first_switch_chunk_idx']}/{switch_info['chunks_checked']-1} "
-                         f"(detected: {sw['detected_lang']}, conf: {sw['confidence']:.2f}). "
-                         f"Retrying (1/{args.max_language_retries}).")
-
-                    for lang_attempt in range(1, args.max_language_retries + 1):
-                        retry_response = await make_api_request(prompt, temperature, args.top_p, args.max_tokens)
-                        if "error" in retry_response:
-                            _log(language, pid, f"Language retry {lang_attempt}: API error.")
-                            break
-
-                        retry_text = retry_response["text"]
-                        retry_info = check_chunk_languages(retry_text, language)
-                        language_switch_retry_count = lang_attempt
-
-                        if not retry_info["has_switch"]:
-                            _log(language, pid, f"Language OK after retry {lang_attempt}.")
-                            solution_text = retry_text
-                            language_switch_info = retry_info
-                            break
-
-                        sw = retry_info["switches"][0]
-                        _log(language, pid,
-                             f"Language switch persists at chunk "
-                             f"{retry_info['first_switch_chunk_idx']}/{retry_info['chunks_checked']-1} "
-                             f"(detected: {sw['detected_lang']}, conf: {sw['confidence']:.2f}). "
-                             f"Retry {lang_attempt}/{args.max_language_retries}.")
-                        language_switch_info = retry_info
-                        if lang_attempt == args.max_language_retries:
-                            solution_text = retry_text
-                            _log(language, pid, "Max language retries reached. Saving with switch metadata.")
+            solution_text, language_switch_info, language_switch_retry_count = (
+                await verify_language_with_retries(
+                    solution_text, language, pid,
+                    lambda: make_api_request(prompt, temperature, args.top_p, args.max_tokens),
+                    "base solution",
+                )
+            )
 
             # Extract answer and check correctness
             answer = extract_answer(solution_text, problem, language)
@@ -585,20 +639,16 @@ async def generate_base_solution(
 async def generate_rollout(
     problem: Problem,
     chunk_text: str,
-    full_cot_prefix: str,
+    prefix_without_chunk: str,
     language: str,
     temperature: float = 0.7,
     rollout_type: str = "default",
     chunk_idx: Optional[int] = None,
 ) -> Dict:
-    """Generate a rollout by removing a chunk and regenerating."""
-    prefix_without_chunk = full_cot_prefix.replace(chunk_text, "").strip()
+    """Generate a rollout continuing from the prefix with the target chunk removed."""
     prompt = build_rollout_prompt(problem, prefix_without_chunk, language, rollout_type)
 
     pid = problem.problem_id
-    chunk_label = f"chunk {chunk_idx}" if chunk_idx is not None else "chunk ?"
-
-
 
     max_retries = args.max_retries
     retry_delay = 2
@@ -620,47 +670,13 @@ async def generate_rollout(
             rollout_text = response["text"]
 
             # Chunk-level language verification
-            language_switch_info = None
-            language_switch_retry_count = 0
-
-            if args.verify_language and language != "en":
-                switch_info = check_chunk_languages(rollout_text, language)
-                language_switch_info = switch_info
-
-                if switch_info["has_switch"]:
-                    chunk_label_log = f"chunk_idx={chunk_idx}" if chunk_idx is not None else "chunk_idx=?"
-                    sw = switch_info["switches"][0]
-                    _log(language, pid,
-                         f"Language switch in rollout for {chunk_label_log} at generation chunk "
-                         f"{switch_info['first_switch_chunk_idx']}/{switch_info['chunks_checked']-1} "
-                         f"(detected: {sw['detected_lang']}, conf: {sw['confidence']:.2f}). "
-                         f"Retry 1/{args.max_language_retries}.")
-
-                    for lang_attempt in range(1, args.max_language_retries + 1):
-                        retry_response = await make_api_request(prompt, temperature, args.top_p, args.max_tokens)
-                        if "error" in retry_response:
-                            break
-
-                        retry_text = retry_response["text"]
-                        retry_info = check_chunk_languages(retry_text, language)
-                        language_switch_retry_count = lang_attempt
-
-                        if not retry_info["has_switch"]:
-                            _log(language, pid,
-                                 f"Rollout language OK after retry {lang_attempt} for {chunk_label_log}.")
-                            rollout_text = retry_text
-                            language_switch_info = retry_info
-                            break
-
-                        sw = retry_info["switches"][0]
-                        _log(language, pid,
-                             f"Language switch persists in rollout for {chunk_label_log} "
-                             f"(retry {lang_attempt}/{args.max_language_retries}): "
-                             f"chunk {retry_info['first_switch_chunk_idx']}/{retry_info['chunks_checked']-1} "
-                             f"(detected: {sw['detected_lang']}, conf: {sw['confidence']:.2f}).")
-                        language_switch_info = retry_info
-                        if lang_attempt == args.max_language_retries:
-                            rollout_text = retry_text
+            rollout_text, language_switch_info, language_switch_retry_count = (
+                await verify_language_with_retries(
+                    rollout_text, language, pid,
+                    lambda: make_api_request(prompt, temperature, args.top_p, args.max_tokens),
+                    f"rollout (chunk_idx={chunk_idx if chunk_idx is not None else '?'})",
+                )
+            )
 
             chunks = split_solution_into_chunks(rollout_text, language)
             chunk_resampled = chunks[0] if chunks else ""
@@ -816,10 +832,12 @@ async def process_problem_language(
         cumulative_chunks.append(current_cumulative.strip())
 
     # Process each chunk
-    for chunk_idx, (chunk, full_prefix) in enumerate(zip(chunks, cumulative_chunks)):
+    for chunk_idx, chunk in enumerate(chunks):
         if args.include_chunks and str(chunk_idx) not in args.include_chunks.split(","):
             continue
 
+        # Counterfactual prefix: chunks 0..i-1, i.e. the trace with chunk i removed.
+        prefix_without_chunk = cumulative_chunks[chunk_idx - 1] if chunk_idx > 0 else ""
 
         chunk_dir = problem_dir / f"chunk_{chunk_idx}"
         chunk_dir.mkdir(exist_ok=True, parents=True)
@@ -861,7 +879,6 @@ async def process_problem_language(
 
             if args.provider == "Local":
                 # Build prompts for batch generation
-                prefix_without_chunk = full_prefix.replace(chunk, "").strip()
                 prompts = []
                 for _ in range(num_needed):
                     p = build_rollout_prompt(problem, prefix_without_chunk, language, args.rollout_type)
@@ -871,7 +888,6 @@ async def process_problem_language(
                     prompts, args.temperature, args.top_p, args.max_tokens
                 )
 
-                snippet = chunk[:60].replace("\n", " ") + ("..." if len(chunk) > 60 else "")
                 new_solutions = []
                 for idx, result in enumerate(batch_results):
                     if "error" in result:
@@ -882,47 +898,15 @@ async def process_problem_language(
                     rollout_text = result.get("text", "")
 
                     # Chunk-level language verification
-                    language_switch_info = None
-                    language_switch_retry_count = 0
+                    async def _regenerate_local(p=prompts[idx]):
+                        return generate_with_local_model(p, args.temperature, args.top_p, args.max_tokens)
 
-                    if args.verify_language and language != "en":
-                        switch_info = check_chunk_languages(rollout_text, language)
-                        language_switch_info = switch_info
-
-                        if switch_info["has_switch"]:
-                            sw = switch_info["switches"][0]
-                            _log(language, pid,
-                                 f"Language switch in local rollout {idx+1}/{num_needed} "
-                                 f"(chunk_idx={chunk_idx}) at generation chunk "
-                                 f"{switch_info['first_switch_chunk_idx']}/{switch_info['chunks_checked']-1} "
-                                 f"(detected: {sw['detected_lang']}, conf: {sw['confidence']:.2f}). "
-                                 f"Retry 1/{args.max_language_retries}.")
-
-                            for lang_attempt in range(1, args.max_language_retries + 1):
-                                retry_result = generate_with_local_model(
-                                    prompts[idx], args.temperature, args.top_p, args.max_tokens
-                                )
-                                if "error" in retry_result:
-                                    break
-
-                                retry_text = retry_result.get("text", "")
-                                retry_info = check_chunk_languages(retry_text, language)
-                                language_switch_retry_count = lang_attempt
-
-                                if not retry_info["has_switch"]:
-                                    rollout_text = retry_text
-                                    language_switch_info = retry_info
-                                    _log(language, pid, f"Local rollout language OK after retry {lang_attempt}.")
-                                    break
-
-                                sw = retry_info["switches"][0]
-                                _log(language, pid,
-                                     f"Language switch persists (retry {lang_attempt}/{args.max_language_retries}): "
-                                     f"chunk {retry_info['first_switch_chunk_idx']}/{retry_info['chunks_checked']-1} "
-                                     f"(detected: {sw['detected_lang']}, conf: {sw['confidence']:.2f}).")
-                                language_switch_info = retry_info
-                                if lang_attempt == args.max_language_retries:
-                                    rollout_text = retry_text
+                    rollout_text, language_switch_info, language_switch_retry_count = (
+                        await verify_language_with_retries(
+                            rollout_text, language, pid, _regenerate_local,
+                            f"local rollout {idx + 1}/{num_needed} (chunk_idx={chunk_idx})",
+                        )
+                    )
 
                     chunks_split = split_solution_into_chunks(rollout_text, language)
                     chunk_resampled = chunks_split[0] if chunks_split else ""
@@ -952,11 +936,10 @@ async def process_problem_language(
                 # API providers: generate in parallel, print each result as it arrives
                 tasks = [
                     asyncio.ensure_future(
-                        generate_rollout(problem, chunk, full_prefix, language, args.temperature, args.rollout_type, chunk_idx=chunk_idx)
+                        generate_rollout(problem, chunk, prefix_without_chunk, language, args.temperature, args.rollout_type, chunk_idx=chunk_idx)
                     )
                     for _ in range(num_needed)
                 ]
-                snippet = chunk[:60].replace("\n", " ") + ("..." if len(chunk) > 60 else "")
                 new_solutions = []
                 done_count = 0
                 for coro in asyncio.as_completed(tasks):

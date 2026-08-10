@@ -3,14 +3,17 @@
 # ABOUTME: Output goes to configs/vertex/runs/ which is gitignored BECAUSE of those keys — never commit generated configs.
 """
 Generate a per-run Vertex AI YAML config from a template.
-Reads HF_TOKEN and OPENAI_API_KEY from local .env if present.
+
+The template carries machine/infra concerns; the experiment itself (dataset,
+languages, model, sampling) comes from a configs/rollout_importance/ run config
+injected as {{RUN_CONFIG}}. Reads HF_TOKEN and OPENAI_API_KEY from local .env.
 
 Usage:
     python scripts/vertex/create_vertex_run_config.py \
         --template experiment_a100.yaml \
-        --run-name en-mgsm-qwen32b \
+        --run-config configs/rollout_importance/qwen25_32b_mgsm.yaml \
         --owner kunwar \
-        --experiment-name mgsm-en-repro \
+        --experiment-name mgsm-qwen32b \
         --image-uri gcr.io/project-25ea6636-1c58-40fa-88b/multilingual-cot:latest
 """
 
@@ -54,17 +57,30 @@ def load_env_keys() -> dict[str, str]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--template", required=True, help="Template filename in configs/vertex/ (e.g. experiment_a100.yaml)")
-    parser.add_argument("--run-name", required=True, help="Short descriptive name for this run")
+    parser.add_argument("--run-config", required=True,
+                        help="Track run config defining the experiment (e.g. configs/rollout_importance/qwen25_32b_mgsm.yaml)")
+    parser.add_argument("--run-name", default=None,
+                        help="Short descriptive name for this run (default: the run config's filename stem)")
     parser.add_argument("--owner", default=None, help="Owner slug (default: VERTEX_RUN_OWNER env, then current user)")
     parser.add_argument("--experiment-name", required=True, help="Experiment group name (maps to GCS prefix)")
     parser.add_argument("--image-uri", required=True, help="Docker image URI to run")
     args = parser.parse_args()
 
+    run_config_path = Path(args.run_config)
+    if not run_config_path.exists():
+        print(f"ERROR: run config not found: {run_config_path}", file=sys.stderr)
+        sys.exit(1)
+    # The container resolves the path relative to /app (the repo root), so it must
+    # be a repo-relative path that the Docker image actually contains.
+    if not str(run_config_path).startswith("configs/"):
+        print(f"ERROR: run config must be a repo-relative path under configs/, got: {run_config_path}", file=sys.stderr)
+        sys.exit(1)
+
     owner = args.owner or os.environ.get("VERTEX_RUN_OWNER") or getpass.getuser()
     owner = slugify(owner)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    run_name = slugify(args.run_name)
+    run_name = slugify(args.run_name or run_config_path.stem)
     display_name = f"{owner}-{run_name}"
     output_filename = f"{timestamp}_{display_name}.yaml"
 
@@ -74,10 +90,14 @@ def main() -> None:
         sys.exit(1)
 
     template = template_path.read_text()
+    if "{{RUN_CONFIG}}" not in template:
+        print(f"ERROR: template {template_path} has no {{{{RUN_CONFIG}}}} placeholder", file=sys.stderr)
+        sys.exit(1)
     env_keys = load_env_keys()
 
     replacements = {
         "{{IMAGE_URI}}": args.image_uri,
+        "{{RUN_CONFIG}}": str(run_config_path),
         "{{DISPLAY_NAME}}": display_name,
         "{{EXPERIMENT_NAME}}": args.experiment_name,
         "{{OWNER}}": owner,
@@ -96,6 +116,7 @@ def main() -> None:
     print(f"Created: {output_path}")
     print(f"Display name: {display_name}")
     print(f"Experiment:   {args.experiment_name}")
+    print(f"Run config:   {run_config_path}")
 
     if not env_keys.get("HF_TOKEN"):
         print("\nWARNING: HF_TOKEN not found — fill in the generated YAML manually before submitting")

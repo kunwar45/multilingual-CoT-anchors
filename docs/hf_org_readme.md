@@ -4,10 +4,11 @@
 
 Do "redo / check / backtrack" reasoning pivots in chains of thought transfer across
 languages, or are they language-specific artifacts? Two experiment tracks (inspired by
-the Thought Anchors literature): **logprob_pivots** (sentence pivot scores from the
-base↔instruct logprob gap, local Qwen2.5-0.5B on MGSM en/es/fr/de) and
-**rollout_importance** (counterfactual chunk importance from resampled rollouts, API
-models on MGSM/MMATH/MMMLU/PolyMath in en/fr/zh/ar).
+the Thought Anchors literature): the primary track **rollout_importance**
+(counterfactual chunk importance from resampled rollouts, API models on
+MGSM/MMATH/MMMLU/PolyMath in en/fr/zh/ar) and the secondary **logprob_pivots**
+(sentence pivot scores from the base↔instruct logprob gap, local Qwen2.5-0.5B on MGSM
+en/es/fr/de).
 
 ## What each repo holds
 

@@ -1,4 +1,4 @@
-# ABOUTME: Default run parameters for the logprob_pivots pipeline: MGSM subset, Qwen2.5-0.5B model pair, generation settings.
+# ABOUTME: Run parameters for the logprob_pivots pipeline: MGSM subset, Qwen2.5-0.5B base/Instruct pair, generation settings.
 # ABOUTME: Mirrors the frozen defaults in src/logprob_pivots/experiment_config.py; never hardcode these in scripts.
 seed: 42
 
@@ -23,6 +23,6 @@ scaffold:
   pivot_top_k: 1
 
 controls:
-  config_path: configs/controls.yaml
+  config_path: configs/logprob_pivots/controls.yaml
 
 

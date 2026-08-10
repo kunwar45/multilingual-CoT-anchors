@@ -3,22 +3,22 @@
 # multilingual-CoT-anchors
 
 Do "redo / check / backtrack" reasoning pivots in LLM chains of thought transfer across
-languages, or are they language-specific artifacts? Two experiment tracks, named after
-their method (inspired by the Thought Anchors literature):
+languages, or are they language-specific artifacts? (Inspired by the Thought Anchors
+literature — see [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md).)
 
-- **logprob_pivots** — local Qwen2.5-0.5B base vs Instruct on MGSM (en/es/fr/de);
-  sentence-level pivot scores from the base↔instruct logprob gap, plus a pivot-triggered
-  redo scaffold.
-- **rollout_importance** — API models on MGSM/MMATH/MMMLU/PolyMath (en/fr/zh/ar);
-  rollout-based counterfactual chunk importance (6 metrics), GPT-4o DAG labeling, LaBSE
-  cross-lingual chunk alignment, GlotLID language-switch detection.
+- **rollout_importance** (the primary track) — API models on MGSM/MMATH/MMMLU/PolyMath
+  (en/fr/zh/ar); rollout-based counterfactual chunk importance (6 metrics), GPT-4o DAG
+  labeling, LaBSE cross-lingual chunk alignment, GlotLID language-switch detection.
+- **logprob_pivots** (secondary, exploratory) — local Qwen2.5-0.5B base vs Instruct on
+  MGSM (en/es/fr/de); sentence-level pivot scores from the base↔instruct logprob gap,
+  plus a pivot-triggered redo scaffold.
 
 ```text
 .
 ├── src/                     # reusable code (import as src.*)
-│   ├── logprob_pivots/      #   config, sentence_segmentation, pivot_scores, prompts
-│   └── rollout_importance/  #   loaders, chunker, generate_rollouts → compute_importance
-│                            #   → align_chunks → make_figures, + smoke_test
+│   ├── rollout_importance/  #   loaders, chunker, generate_rollouts → compute_importance
+│   │                        #   → align_chunks → make_figures, + smoke_test
+│   └── logprob_pivots/      #   (secondary) config, sentence_segmentation, pivot_scores, prompts
 ├── scripts/                 # pipeline drivers: thin CLIs over src/
 │   ├── logprob_pivots/      #   one script per stage + run_full_pipeline.sh
 │   └── vertex/              #   Vertex AI build/submit/download + container job runner
@@ -39,7 +39,7 @@ cp .env.example .env      # fill in API keys
 
 # rollout_importance: generate → compute importance → align → figures
 venv/bin/python -m src.rollout_importance.smoke_test
-venv/bin/python -m src.rollout_importance.generate_rollouts  --dataset mgsm --languages en,fr,zh -m <model> -p Together
+venv/bin/python -m src.rollout_importance.generate_rollouts  --config configs/rollout_importance/qwen25_32b_mgsm.yaml
 venv/bin/python -m src.rollout_importance.compute_importance --dataset mgsm --languages en,fr,zh -m <model>
 venv/bin/python -m src.rollout_importance.align_chunks       --dataset mgsm --lang1 en --lang2 fr
 venv/bin/python -m src.rollout_importance.make_figures       --dataset mgsm --languages en,fr,zh --model <model>

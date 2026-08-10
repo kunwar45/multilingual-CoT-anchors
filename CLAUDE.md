@@ -13,17 +13,18 @@ Orientation + operating rules for this repo. Read this before touching anything.
 Research on **language-invariant reasoning pivots in LLMs**: do "redo / check / backtrack"
 reasoning regimes transfer across languages, or are they language-specific artifacts?
 Inspired by the Thought Anchors literature. Two experiment tracks share the repo, named
-after their method:
+after their method — **rollout_importance is the primary track**; logprob_pivots is a
+secondary, exploratory measure:
 
-1. **logprob_pivots** — local models (Qwen2.5-0.5B base vs Instruct) on MGSM en/es/fr/de.
-   Sentence-level *pivot scores* via the logprob gap between base and instruct models
-   (mean |Δ logprob| per sentence over the tokens in its span), plus a pivot-triggered
-   redo scaffold and faithfulness tests.
-2. **rollout_importance** — API models (Together/Fireworks/Vertex) on MGSM + MMATH +
-   MMMLU + PolyMath, languages en/fr/zh/ar. Rollout-based *counterfactual importance*:
-   remove chunk i, resample, measure Δ accuracy / KL at chunk i+1, filtered by embedding
-   dissimilarity (cos < 0.8). Six importance metrics, GPT-4o DAG labeling, LaBSE
-   cross-lingual chunk alignment, GlotLID language-switch detection.
+1. **rollout_importance** (primary) — API models (Together/Fireworks/Vertex) on MGSM +
+   MMATH + MMMLU + PolyMath, languages en/fr/zh/ar. Rollout-based *counterfactual
+   importance*: remove chunk i, resample, measure Δ accuracy / KL at chunk i+1, filtered
+   by embedding dissimilarity (cos < 0.8). Six importance metrics, GPT-4o DAG labeling,
+   LaBSE cross-lingual chunk alignment, GlotLID language-switch detection.
+2. **logprob_pivots** (secondary) — local models (Qwen2.5-0.5B base vs Instruct) on MGSM
+   en/es/fr/de. Sentence-level *pivot scores* via the logprob gap between base and
+   instruct models (mean |Δ logprob| per sentence over the tokens in its span), plus a
+   pivot-triggered redo scaffold and faithfulness tests.
 
 Core comparison condition in both tracks: **Target-CoT vs En-CoT** (reason in the problem's
 language vs reason in English). Language switch = the model drifting into English mid-trace.
@@ -65,9 +66,17 @@ scripts/                pipeline drivers; a script pipes src/ functions together
                           submit_vertex_job.sh → download_vertex_results.sh;
                           vertex_job_runner.py is the container entrypoint (runs the
                           command after `--`, uploads output/rollouts/ to GCS)
+  slurm/                  Alliance (Compute Canada) job infra: setup_environment_and_prefetch.sh
+                          (login node, one-time per run config) → generate_rollouts_job.sbatch
+                          (vLLM on the job's GPU + generate_rollouts via the Vertex provider)
 configs/                YAML configs, foldered by track. NEVER hardcode run params in scripts.
-  logprob_pivots/         default.yaml, controls.yaml
-  vertex/                 job templates (experiment_a100.yaml, smoke_l4.yaml);
+  rollout_importance/     one YAML per run — a run varies dataset, languages, model
+                          (qwen25_32b_mgsm.yaml, qwen25_7b_mgsm.yaml); pass via
+                          --config, explicit CLI flags override
+  logprob_pivots/         qwen25_05b_mgsm.yaml, controls.yaml
+  vertex/                 job templates (experiment_a100.yaml, smoke_l4.yaml) — machine/
+                          infra only; the experiment comes from the {{RUN_CONFIG}}
+                          track config injected by create_vertex_run_config.py.
                           runs/ holds generated per-run copies — gitignored because the
                           generator INJECTS API KEYS into them; never commit them
 scratch/                one-off and AI-generated scripts. Default home for new experimental
@@ -99,9 +108,12 @@ work without hacks.
   `src/` and the script stays thin.
 - `scripts/` holds pipelines we expect to rerun. New AI-written one-offs do NOT go here —
   default to `scratch/` until the code earns promotion.
-- **Names are self-describing.** A module or script name states what it computes or
-  produces (`compute_pivot_scores.py`, `generate_rollouts.py`) — never a bare `utils.py`,
-  `plots.py`, `run.py`, or `exp2/`. No abbreviations (`language_verification.py`, not
+- **Names are self-describing — every file, configs included.** A module or script name
+  states what it computes or produces (`compute_pivot_scores.py`, `generate_rollouts.py`)
+  — never a bare `utils.py`, `plots.py`, `run.py`, or `exp2/`. A config file is named for
+  the run it specifies — model and dataset, e.g.
+  `configs/rollout_importance/qwen25_32b_mgsm.yaml` — never `default.yaml`,
+  `config.yaml`, or `settings.yaml`. No abbreviations (`language_verification.py`, not
   `lang_verifier.py`). Stage drivers start with a verb.
 - **Every file starts with an ABOUTME header.** The first two comment lines of every
   file (after the shebang, if any) each begin with `ABOUTME:` and together say what the
@@ -213,7 +225,7 @@ deletable. Never treat the bucket as the archive.
 | Stage | Command | Produces |
 |---|---|---|
 | 0. smoke | `venv/bin/python -m src.rollout_importance.smoke_test` | 31 offline checks — run after ANY change to this track |
-| 1. generate | `venv/bin/python -m src.rollout_importance.generate_rollouts --dataset mgsm --languages en,fr,zh -m <model> -p Together` | `output/rollouts/<dataset>/<model>/.../chunk_i/solutions.json` |
+| 1. generate | `venv/bin/python -m src.rollout_importance.generate_rollouts --config configs/rollout_importance/<run>.yaml` | `output/rollouts/<dataset>/<model>/.../chunk_i/solutions.json` |
 | 2. importance | `venv/bin/python -m src.rollout_importance.compute_importance --dataset mgsm --languages en,fr,zh -m <model>` | 6 importance metrics + GPT-4o DAG labels per chunk |
 | 3. align | `venv/bin/python -m src.rollout_importance.align_chunks --dataset mgsm --lang1 en --lang2 fr` | LaBSE cross-lingual chunk alignment |
 | 4. figures | `venv/bin/python -m src.rollout_importance.make_figures --dataset mgsm --languages en,fr,zh --model <model>` | `output/figures/` (5 plot types) |
@@ -242,11 +254,34 @@ Stages 3–7 default to the **latest** run under `output/logprob_pivots/runs/`; 
 
 ```bash
 bash scripts/vertex/build_and_push_docker_image.sh [TAG]   # docker build + push (uses Dockerfile at root)
-python scripts/vertex/create_vertex_run_config.py --template experiment_a100.yaml ...
+python scripts/vertex/create_vertex_run_config.py --template experiment_a100.yaml \
+    --run-config configs/rollout_importance/<run>.yaml ...
                                                     # → configs/vertex/runs/<ts>_<name>.yaml (keys injected — DO NOT COMMIT)
 bash scripts/vertex/submit_vertex_job.sh --project <p> --display-name <n> --config configs/vertex/runs/<file>.yaml
 bash scripts/vertex/download_vertex_results.sh --gcs-uri gs://.../<run_id> --dest-dir ./vertex_downloads
 ```
+
+Templates carry only machine/infra choices (GPU type, disk, GCS env) and force
+`--provider Local` so the model under test is hosted on the job's own GPU; **what** runs
+— dataset, languages, model, sampling — comes from the `--run-config` track config.
+`smoke_l4.yaml` shrinks any run config to 2 problems × 5 rollouts for infra checks.
+
+### SLURM jobs (Alliance / Compute Canada — free GPU hours)
+
+```bash
+# on a login node, from the repo root (once per run config):
+bash scripts/slurm/setup_environment_and_prefetch.sh configs/rollout_importance/<run>.yaml
+sbatch --account=def-<pi> scripts/slurm/generate_rollouts_job.sbatch configs/rollout_importance/<run>.yaml
+```
+
+The job boots vLLM on the allocated GPU(s) (tensor-parallel size follows
+`--gpus-per-node`) and runs `generate_rollouts --provider Vertex` against
+`localhost` with `--max_concurrent_requests 32`. **Compute nodes have no internet**:
+the setup script prefetches model weights, the dataset, and GlotLID into
+`$SCRATCH/hf_cache`, and the job runs with `HF_HUB_OFFLINE=1` — publishing to HF
+happens from a login node afterwards. Jobs that hit the time limit are just
+resubmitted (generation is resumable). 32B fp16 needs 2×A100-40GB
+(`--gpus-per-node=a100:2` on Narval) or 1×H100-80GB.
 
 The container entrypoint is `scripts/vertex/vertex_job_runner.py` — it runs whatever comes
 after `--` (e.g. `python -m src.rollout_importance.generate_rollouts ...`) and uploads

@@ -56,3 +56,4 @@ configs/vertex/runs/
 output/
 # Staged inputs: pull from HF or rebuild (build_mgsm_subset)
 data/
+slurm_logs/

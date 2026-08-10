@@ -7,6 +7,73 @@ with absolute dates. Routine refactors, chores, and doc edits get no entry.
 
 ---
 
+## 2026-08-06 — SLURM path for stage 1 (Alliance / Compute Canada, free GPU hours)
+
+**Method:** added `scripts/slurm/` as a second, zero-cost execution route for
+generate_rollouts, reusing the same run configs as the Vertex flow.
+`setup_environment_and_prefetch.sh` (login node, once per run config) builds the venv,
+installs vLLM, and prefetches the run's model weights + dataset + GlotLID into
+`$SCRATCH/hf_cache`, because **Alliance compute nodes have no internet**.
+`generate_rollouts_job.sbatch` boots `vllm serve` on the job's GPU(s)
+(`--tensor-parallel-size` follows `SLURM_GPUS_ON_NODE`; 32B fp16 needs 2×A100-40GB on
+Narval), waits for health, then runs `generate_rollouts --config <run>.yaml --provider
+Vertex` against localhost with `HF_HUB_OFFLINE=1` — the existing Vertex provider is just
+an OpenAI-compatible base URL, so no new provider code was needed. Added
+`--max_concurrent_requests` to generate_rollouts (default 6, unchanged behavior; the
+SLURM job passes 32 to keep a dedicated vLLM server busy). Time-limit deaths are handled
+by resubmitting — generation is resumable. `slurm_logs/` gitignored.
+
+**Result:** both scripts pass `bash -n`; the YAML-extraction one-liners and the new
+concurrency flag verified locally; rollout smoke test unchanged (28/0/4). Untested on a
+real cluster yet — first submission should use the 7B config with `-np 2 -nr 5` CLI
+overrides as a smoke run.
+
+## 2026-08-06 — Vertex jobs now driven by track run configs (dataset × languages × model)
+
+**Method:** a run varies three things — dataset, languages, model — so those now live
+exclusively in `configs/rollout_importance/<run>.yaml` (one file per run:
+`qwen25_32b_mgsm.yaml`, new `qwen25_7b_mgsm.yaml` for L4-class GPUs). The Vertex
+templates (`experiment_a100.yaml`, `smoke_l4.yaml`) no longer hardcode generate_rollouts
+args: they keep only machine/infra choices, force `--provider Local` (model under test
+self-hosted on the job's GPU), and take the experiment via a new `{{RUN_CONFIG}}`
+placeholder; `create_vertex_run_config.py` gained a required `--run-config` flag that
+validates and injects the repo-relative path (run name defaults to the config's stem).
+`smoke_l4.yaml` shrinks any run config to 2 problems × 5 rollouts via CLI overrides.
+Behavior change vs the old A100 template: it ran `--languages en` with
+`--no_verify_language` hardcoded; jobs now run whatever the run config says — for
+`qwen25_32b_mgsm.yaml` that is en/fr/zh with GlotLID verification ON (a ~3× larger run
+than the old en-only template; override on the config or CLI to shrink).
+
+**Result:** generated job YAMLs for both templates parse and contain the expected
+`--config <run>.yaml --provider Local` command; container arg resolution simulated
+locally (config + CLI overrides) resolves correctly; missing/invalid `--run-config`
+rejected with clear errors. Rollout smoke test unchanged (28/0/4). No job submitted yet.
+
+## 2026-08-06 — generate_rollouts: YAML run configs + counterfactual-prefix bug fix
+
+**Method:** `generate_rollouts.py` now takes `--config` (YAML keys = long option names,
+applied as argparse defaults so explicit CLI flags override); canonical params live in
+`configs/rollout_importance/qwen25_32b_mgsm.yaml` (mgsm, en/fr/zh, Qwen2.5-32B-Instruct,
+250 problems × 40 rollouts, t=0.6, top_p=0.95, seed 44). `--model` no longer has a
+hardcoded default (the stale `Qwen/Qwen3.5-9B`) — it must come from the config or `-m`.
+While in there: **fixed a correctness bug in counterfactual prefix construction** — the
+prefix was built with `full_prefix.replace(chunk_text, "")`, which deletes *every*
+occurrence of a repeated chunk (e.g. a short "Wait." or duplicated equation line), not
+just chunk i; it now uses the cumulative prefix through chunk i−1 directly. Rollouts
+generated before 2026-08-06 are unaffected unless a base solution contained an exactly
+repeated chunk. Also deduplicated the thrice-copied GlotLID retry loop into
+`verify_language_with_retries()` (identical save/retry semantics) and aligned base-
+solution API retries with `--max_retries`. Config-file naming rule added to CLAUDE.md:
+configs are named for the run they specify, never `default.yaml` (logprob config renamed
+to `configs/logprob_pivots/qwen25_05b_mgsm.yaml` accordingly).
+
+**Result:** rollout smoke test 28 passed / 0 failed / 4 skipped (unchanged baseline);
+config load + CLI-override + unknown-key rejection verified by importing the module with
+patched argv.
+
+**Next steps:** point the Vertex job templates at track configs instead of hardcoding
+args in the container command; consider `--config` for the other rollout stages.
+
 ## 2026-08-05 — File-name clarity pass + ABOUTME headers on every file
 
 **Method:** repo-wide audit of file names for clarity; renamed the stragglers with
