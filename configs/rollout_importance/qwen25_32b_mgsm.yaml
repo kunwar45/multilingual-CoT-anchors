@@ -17,8 +17,15 @@ base_solution_type: correct
 rollout_type: default
 
 num_problems: 250
-num_rollouts: 40
+# 10 rollouts/chunk is a deliberately cheap first pass (~4x faster than 40). Accuracy
+# resolution per chunk is 0.1 BEFORE compute_importance drops rollouts whose resampled
+# chunk is too similar to the original (cos < 0.8), so expect only a few usable samples
+# per chunk. Raise toward 40-100 before treating cross-language deltas as publishable.
+num_rollouts: 10
 temperature: 0.6
 top_p: 0.95
-max_tokens: 16384
+# MGSM is grade-school math: traces run a few hundred tokens. 16384 bought nothing but
+# expensive runaway generations in the tail. Raise this for MMATH/PolyMath, which are
+# genuinely long-form.
+max_tokens: 2048
 seed: 44

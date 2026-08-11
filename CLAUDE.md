@@ -51,8 +51,10 @@ src/                    correctness-critical reusable code (import as src.*):
                             data_loaders.py          MGSM / MMATH / MMMLU / PolyMath loaders
                             chunker.py               language-specific chunking (en/fr/zh/ar), LaTeX-aware
                             prompts.py               base-solution / rollout / DAG-labeling prompts
-                            answer_extraction.py     answer extraction, checking, normalization
-                            language_verification.py GlotLID chunk-level language detection
+                            answer_extraction.py     answer extraction, checking, normalization;
+                                                     also hosts load_glotlid_model()
+                            language_verification.py check_chunk_languages(): GlotLID chunk-level
+                                                     language detection (loader lives next door)
                             generate_rollouts.py     STAGE 1: async API rollout generation
                             compute_importance.py    STAGE 2: 6 importance metrics + GPT-4o DAG labeling
                             align_chunks.py          STAGE 3: LaBSE DP cross-lingual chunk alignment
@@ -68,7 +70,9 @@ scripts/                pipeline drivers; a script pipes src/ functions together
                           command after `--`, uploads output/rollouts/ to GCS)
   slurm/                  Alliance (Compute Canada) job infra: setup_environment_and_prefetch.sh
                           (login node, one-time per run config) → generate_rollouts_job.sbatch
-                          (vLLM on the job's GPU + generate_rollouts via the Vertex provider)
+                          (vLLM on the job's GPU + generate_rollouts via the Vertex provider);
+                          submit_language_shards.sh fans one run config out to one job per
+                          language (disjoint output paths, so shards never collide)
 configs/                YAML configs, foldered by track. NEVER hardcode run params in scripts.
   rollout_importance/     one YAML per run — a run varies dataset, languages, model
                           (qwen25_32b_mgsm.yaml, qwen25_7b_mgsm.yaml); pass via
@@ -272,11 +276,29 @@ Templates carry only machine/infra choices (GPU type, disk, GCS env) and force
 # on a login node, from the repo root (once per run config):
 bash scripts/slurm/setup_environment_and_prefetch.sh configs/rollout_importance/<run>.yaml
 sbatch --account=def-<pi> scripts/slurm/generate_rollouts_job.sbatch configs/rollout_importance/<run>.yaml
+
+# anything after the run config is forwarded to generate_rollouts, e.g. a smoke run:
+sbatch --account=def-<pi> --time=1:00:00 scripts/slurm/generate_rollouts_job.sbatch \
+    configs/rollout_importance/qwen25_7b_mgsm.yaml -np 2 -nr 5
+
+# or fan the run out to one job per language (roughly Nx less wall clock on N GPUs):
+bash scripts/slurm/submit_language_shards.sh --account def-<pi> \
+    configs/rollout_importance/<run>.yaml
 ```
 
-The job boots vLLM on the allocated GPU(s) (tensor-parallel size follows
-`--gpus-per-node`) and runs `generate_rollouts --provider Vertex` against
-`localhost` with `--max_concurrent_requests 32`. **Compute nodes have no internet**:
+**Throughput**: a single chunk only fans out to `--num_rollouts` requests, nowhere near
+enough to saturate a GPU, so `generate_rollouts` also runs problems and chunks
+concurrently (`--max_concurrent_problems` 8, `--max_concurrent_chunks` 4;
+`--max_concurrent_requests` is the global in-flight ceiling and the only thing hosted
+providers need tuned). Both are forced to 1 for `--provider Local`. The job picks
+**data** parallel over tensor parallel when the weights fit on one GPU — tensor parallel
+cuts latency but scales throughput sublinearly.
+
+The job boots vLLM on the allocated GPU(s) (parallel size follows `--gpus-per-node`;
+see the throughput note above for which parallelism mode it picks) and runs
+`generate_rollouts --provider Vertex` against `localhost` with
+`--max_concurrent_requests 128`. It aborts in seconds if the allocated VRAM is too small
+for the model rather than failing deep into a weight load. **Compute nodes have no internet**:
 the setup script prefetches model weights, the dataset, and GlotLID into
 `$SCRATCH/hf_cache`, and the job runs with `HF_HUB_OFFLINE=1` — publishing to HF
 happens from a login node afterwards. Jobs that hit the time limit are just

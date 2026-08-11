@@ -19,8 +19,10 @@
 
 workerPoolSpecs:
   - machineSpec:
-      machineType: a2-highgpu-1g
-      acceleratorType: NVIDIA_TESLA_A100
+      # a2-ultragpu-1g = 1x A100-80GB. Do NOT downgrade to a2-highgpu-1g: that is
+      # the 40GB A100, and 32B fp16 weights (~64GB) OOM on load under --provider Local.
+      machineType: a2-ultragpu-1g
+      acceleratorType: NVIDIA_A100_80GB
       acceleratorCount: 1
     diskSpec:
       bootDiskType: pd-ssd

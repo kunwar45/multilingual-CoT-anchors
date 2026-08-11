@@ -110,7 +110,19 @@ parser.add_argument("--max_retries", type=int, default=3,
                     help="Max retries for API requests")
 parser.add_argument("--max_concurrent_requests", type=int, default=6,
                     help="Concurrent in-flight API requests; keep low for rate-limited "
-                         "providers, raise (e.g. 32) against a dedicated vLLM server")
+                         "providers, raise (e.g. 128) against a dedicated vLLM server. "
+                         "This is the GLOBAL throttle — the two flags below only create "
+                         "enough work to reach it")
+parser.add_argument("--max_concurrent_problems", type=int, default=8,
+                    help="Problems processed concurrently within a language. Rollouts for a "
+                         "single chunk are only --num_rollouts wide, which cannot fill a "
+                         "dedicated GPU; problem-level parallelism is what saturates it. "
+                         "Forced to 1 for --provider Local (batched local generation blocks "
+                         "the event loop)")
+parser.add_argument("--max_concurrent_chunks", type=int, default=4,
+                    help="Chunks processed concurrently within a problem. Chunks are "
+                         "independent — each rollout only reads the cumulative prefix through "
+                         "chunk i-1, computed up front. Forced to 1 for --provider Local")
 parser.add_argument("--skip_recalculate", action="store_true", default=False,
                     help="Skip recalculating accuracy for existing rollouts")
 parser.add_argument("--include_problems", type=str, default=None,
@@ -160,8 +172,17 @@ elif args.provider == "Vertex" and not VERTEX_API_BASE_URL:
     raise ValueError("VERTEX_API_BASE_URL not set — add it to .env (e.g. http://<vm-ip>:8000/v1)")
 
 # Global semaphore: default 6 keeps hosted providers under ~10 QPS rate limits;
-# a dedicated vLLM server wants --max_concurrent_requests 32+ to keep the GPU busy
+# a dedicated vLLM server wants --max_concurrent_requests 128+ to keep the GPU busy.
+# This is the only thing bounding real in-flight requests: --max_concurrent_problems and
+# --max_concurrent_chunks just generate enough concurrent work to reach this ceiling, so
+# raising them is safe for rate-limited providers.
 _API_SEM = asyncio.Semaphore(args.max_concurrent_requests)
+
+# Local generation is a synchronous, already-batched GPU call that blocks the event loop,
+# so outer concurrency buys nothing and only interleaves output.
+if args.provider == "Local":
+    args.max_concurrent_problems = 1
+    args.max_concurrent_chunks = 1
 
 # Set random seeds
 random.seed(args.seed)
@@ -831,10 +852,15 @@ async def process_problem_language(
         current_cumulative += chunk + " "
         cumulative_chunks.append(current_cumulative.strip())
 
-    # Process each chunk
-    for chunk_idx, chunk in enumerate(chunks):
+    # Process each chunk. Chunks are independent: a chunk's rollouts read only
+    # cumulative_chunks[chunk_idx - 1], which is fully computed above, and each chunk
+    # writes its own chunk_<i>/solutions.json. So they run concurrently, bounded by
+    # --max_concurrent_chunks and globally by --max_concurrent_requests.
+    chunk_semaphore = asyncio.Semaphore(args.max_concurrent_chunks)
+
+    async def process_chunk(chunk_idx: int, chunk: str) -> None:
         if args.include_chunks and str(chunk_idx) not in args.include_chunks.split(","):
-            continue
+            return
 
         # Counterfactual prefix: chunks 0..i-1, i.e. the trace with chunk i removed.
         prefix_without_chunk = cumulative_chunks[chunk_idx - 1] if chunk_idx > 0 else ""
@@ -892,7 +918,7 @@ async def process_problem_language(
                 for idx, result in enumerate(batch_results):
                     if "error" in result:
                         new_solutions.append({"error": result["error"]})
-                        print(f"  chunk {chunk_idx:>3}/{len(chunks)-1} | rollout {idx+1}/{num_needed} err | {result['error'][:80]}", flush=True)
+                        print(f"  [{language}] {pid} chunk {chunk_idx:>3}/{len(chunks)-1} | rollout {idx+1}/{num_needed} err | {result['error'][:80]}", flush=True)
                         continue
 
                     rollout_text = result.get("text", "")
@@ -920,7 +946,7 @@ async def process_problem_language(
 
                     status = "✓" if is_correct else "✗"
                     resampled = chunk_resampled[:80].replace("\n", " ") + ("..." if len(chunk_resampled) > 80 else "")
-                    print(f"  chunk {chunk_idx:>3}/{len(chunks)-1} | rollout {idx+1}/{num_needed} {status} | resampled: {resampled}", flush=True)
+                    print(f"  [{language}] {pid} chunk {chunk_idx:>3}/{len(chunks)-1} | rollout {idx+1}/{num_needed} {status} | resampled: {resampled}", flush=True)
                     new_solutions.append({
                         "chunk_removed": chunk,
                         "prefix_without_chunk": prefix_without_chunk,
@@ -956,14 +982,20 @@ async def process_problem_language(
                         status = "✓" if result.get("is_correct") else "✗"
                         resampled_raw = result.get("chunk_resampled", "")
                         resampled = resampled_raw[:80].replace("\n", " ") + ("..." if len(resampled_raw) > 80 else "")
-                    print(f"  chunk {chunk_idx:>3}/{len(chunks)-1} | rollout {done_count}/{num_needed} {status} | resampled: {resampled}", flush=True)
+                    print(f"  [{language}] {pid} chunk {chunk_idx:>3}/{len(chunks)-1} | rollout {done_count}/{num_needed} {status} | resampled: {resampled}", flush=True)
 
             all_solutions = existing_solutions + new_solutions
             with open(solutions_file, "w", encoding="utf-8") as f:
                 json.dump(all_solutions, f, indent=2, ensure_ascii=False)
         else:
             snippet = chunk[:60].replace("\n", " ") + ("..." if len(chunk) > 60 else "")
-            print(f"  chunk {chunk_idx:>3}/{len(chunks)-1} | already done ({len(valid_existing_solutions)} solutions) | {snippet}")
+            print(f"  [{language}] {pid} chunk {chunk_idx:>3}/{len(chunks)-1} | already done ({len(valid_existing_solutions)} solutions) | {snippet}")
+
+    async def run_chunk(chunk_idx: int, chunk: str) -> None:
+        async with chunk_semaphore:
+            await process_chunk(chunk_idx, chunk)
+
+    await asyncio.gather(*(run_chunk(i, c) for i, c in enumerate(chunks)))
 
 
 # ---------------------------------------------------------------------------
@@ -999,17 +1031,34 @@ async def main():
     print(f"Loaded {len(problems)} problems available in all requested languages.")
     print(f"Selected: {', '.join(problems.keys())}")
     print(f"Model: {args.model} (provider: {args.provider})")
+    print(f"Concurrency: {args.max_concurrent_problems} problems x {args.max_concurrent_chunks} chunks, "
+          f"capped at {args.max_concurrent_requests} in-flight requests")
 
-    # Process each language
+    # Languages stay sequential: each writes its own output tree, so finishing one at a
+    # time keeps partial results publishable and makes sharding a run across jobs by
+    # --languages straightforward. Problems within a language run concurrently — a single
+    # chunk only fans out to --num_rollouts requests, far too few to saturate a GPU.
+    problem_semaphore = asyncio.Semaphore(args.max_concurrent_problems)
+
     for language in languages:
         output_dir = get_output_dir(language)
         print(f"\n{'='*60}")
         print(f"Processing language: {language} -> {output_dir}")
         print(f"{'='*60}")
 
-        for problem_id, lang_problems in tqdm(problems.items(), desc=f"[{language}] Problems"):
-            problem = lang_problems[language]
-            await process_problem_language(problem, language, output_dir)
+        # language/output_dir bound as defaults, not captured by reference — the loop
+        # rebinds them each iteration and these coroutines must not see a later value.
+        async def run_problem(problem: Problem, language=language, output_dir=output_dir) -> None:
+            async with problem_semaphore:
+                await process_problem_language(problem, language, output_dir)
+
+        tasks = [
+            asyncio.ensure_future(run_problem(lang_problems[language]))
+            for lang_problems in problems.values()
+        ]
+        for future in tqdm(asyncio.as_completed(tasks), total=len(tasks),
+                           desc=f"[{language}] Problems"):
+            await future
 
 
 if __name__ == "__main__":

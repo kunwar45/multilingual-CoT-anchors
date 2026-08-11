@@ -1,5 +1,12 @@
-# ABOUTME: Control/ablation settings for logprob_pivots pivot scoring (sentence boundaries, paraphrase and translation controls).
-# ABOUTME: Documents which confound each control addresses; consumed alongside configs/logprob_pivots/qwen25_05b_mgsm.yaml.
+# ABOUTME: SPEC ONLY, NOT IMPLEMENTED — planned control/ablation settings for logprob_pivots pivot scoring.
+# ABOUTME: No pipeline stage reads this file; the `enabled` flags below describe intent, not behavior.
+#
+# STATUS: unimplemented. Only `sentence_boundaries` describes something the code
+# actually does today (pivot scores are computed over pysbd sentence spans, in
+# src/logprob_pivots/sentence_segmentation.py) — and it does so unconditionally,
+# not because of this file. The paraphrase and back-translation controls have no
+# implementation at all. Toggling anything here changes nothing.
+# Wire these into a stage before treating any `enabled: true` below as a fact.
 controls:
   sentence_boundaries:
     enabled: true

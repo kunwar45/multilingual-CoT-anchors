@@ -17,7 +17,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.logprob_pivots.experiment_config import Config
+from src.logprob_pivots.experiment_config import Config, load_config
 from src.logprob_pivots.prompts import prompt_target_cot, prompt_en_cot
 
 FINAL_RE = re.compile(r"FINAL:\s*([-+]?\d+(\.\d+)?)")
@@ -64,9 +64,16 @@ def main():
         help="Optional limit on number of rows from data/mgsm_subset.csv to process "
              "(useful for quick smoke tests).",
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="YAML run config from configs/logprob_pivots/ "
+             "(default: configs/logprob_pivots/qwen25_05b_mgsm.yaml).",
+    )
     args = parser.parse_args()
 
-    cfg = Config()
+    cfg = load_config(args.config)
     device = pick_device(cfg)
 
     from src.hf_fetching import ensure_mgsm_subset

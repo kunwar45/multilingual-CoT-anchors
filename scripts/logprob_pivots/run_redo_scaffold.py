@@ -17,7 +17,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.logprob_pivots.experiment_config import Config
+from src.logprob_pivots.experiment_config import Config, load_config
 from src.logprob_pivots.sentence_segmentation import sentence_spans
 
 FINAL_RE = re.compile(r"FINAL:\s*([-+]?\d+(\.\d+)?)")
@@ -101,15 +101,17 @@ def main():
     parser.add_argument(
         "--n-branches",
         type=int,
-        default=3,
-        help="Number of redo branches to sample at the pivot / random sentence.",
+        default=None,
+        help="Number of redo branches to sample at the pivot / random sentence "
+        "(default: scaffold.n_branches from the run config).",
     )
     parser.add_argument(
         "--top-k",
         type=int,
-        default=1,
+        default=None,
         help="Use the top-k highest-scoring pivot sentences; k>1 currently "
-        "means we pick the best (highest pivot_score) among them.",
+        "means we pick the best (highest pivot_score) among them "
+        "(default: scaffold.pivot_top_k from the run config).",
     )
     parser.add_argument(
         "--limit",
@@ -117,9 +119,21 @@ def main():
         default=None,
         help="Optional limit on the number of examples to process (for speed).",
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="YAML run config from configs/logprob_pivots/ "
+             "(default: configs/logprob_pivots/qwen25_05b_mgsm.yaml).",
+    )
     args = parser.parse_args()
 
-    cfg = Config()
+    cfg = load_config(args.config)
+    # Scaffold sizes come from the run config unless explicitly overridden on the CLI.
+    if args.n_branches is None:
+        args.n_branches = cfg.n_branches
+    if args.top_k is None:
+        args.top_k = cfg.pivot_top_k
     device = pick_device(cfg)
 
     run_dir = args.run_dir or find_latest_run()

@@ -7,6 +7,113 @@ with absolute dates. Routine refactors, chores, and doc edits get no entry.
 
 ---
 
+## 2026-08-10 — generate_rollouts throughput: problem/chunk parallelism (measured 5.8x)
+
+**Hypothesis:** the run was latency-bound on its own loop structure, not on the GPU.
+`main()` iterated languages → problems → chunks serially, and only the innermost level
+(rollouts for one chunk) ran concurrently. Peak in-flight requests therefore equalled
+`--num_rollouts`, so `--max_concurrent_requests 32` never bound and a dedicated vLLM
+server sat mostly idle. Dropping `num_rollouts` 40→10 earlier today made this worse: it
+cut total work 4x but also shrank the only parallel dimension 4x.
+
+**Method:** chunks are independent — a chunk's rollouts read only
+`cumulative_chunks[chunk_idx - 1]`, computed up front from the base solution, and each
+chunk writes its own `chunk_<i>/solutions.json`. So the chunk loop became
+`asyncio.gather` over a `--max_concurrent_chunks` semaphore (default 4), and the problem
+loop `asyncio.gather` over `--max_concurrent_problems` (default 8). Languages stay
+sequential so partial results remain publishable and sharding by `--languages` stays
+clean. `--max_concurrent_requests` is now the sole global throttle, so the new flags are
+safe for rate-limited hosted providers; both are forced to 1 under `--provider Local`
+(batched local generation blocks the event loop). Progress lines gained a `[lang] pid`
+prefix since output now interleaves. Alongside: `scripts/slurm/submit_language_shards.sh`
+(one job per language, disjoint output paths); the sbatch now prefers vLLM **data**
+parallel over tensor parallel when the weights fit on one GPU, with a `--help` probe and
+tensor-parallel fallback for older vLLM; job request cap 32 → 128; and `max_tokens`
+16384 → 2048 in both MGSM run configs (MGSM traces are a few hundred tokens; the old
+value only bought runaway tails).
+
+**Result:** measured against a mock streaming server that counts in-flight requests
+(6 problems x 4 rollouts, identical settings otherwise):
+
+| mode | wall clock | peak concurrent requests | total requests | solutions.json |
+|---|---|---|---|---|
+| serial (old) | 32.3 s | 4 | 150 | 36 |
+| parallel (new) | 5.6 s | 96 | 150 | 36 |
+
+**5.8x faster on identical work** — same request count, same file count. Correctness
+checked rather than assumed: the two output trees are structurally identical, and all 144
+rollouts have byte-identical `prefix_without_chunk` / `chunk_removed`, confirming no race
+on `cumulative_chunks`; prefix lengths stay monotonically increasing in chunk index.
+Resumability intact (rerun issued 0 requests, logged 36 "already done"). Rollout smoke
+test 28 passed / 0 failed / 4 skipped, unchanged.
+
+**Next steps:** the mock has no GPU behind it, so 5.8x is the loop-structure ceiling, not
+a vLLM throughput prediction — the real gain depends on where vLLM's batching curve
+flattens for 32B. Measure `--max_concurrent_problems` on the 7B smoke run before assuming
+8 is optimal. With the loop no longer the bottleneck, revisit `num_rollouts: 10` — larger
+batches are also *more* GPU-efficient per request, so more rollouts may cost little extra
+wall clock.
+
+**Not changed (deliberate):** GlotLID verification stays on. Disabling it would cut fr/zh
+regeneration cost, but language purity is a property of the experiment, not a knob —
+`--no_verify_language` is available if a first pass wants it.
+
+## 2026-08-10 — Config/code discrepancy audit before the first real rollout run
+
+**Method:** audited every config against the code that consumes it, ahead of greenlighting
+the first counterfactual rollout run on Killarney. Five discrepancies found and fixed:
+
+1. **`generate_rollouts_job.sbatch` silently dropped extra CLI args.** It read only `$1`,
+   so the smoke procedure documented in the 2026-08-06 entry below
+   (`... <run>.yaml -np 2 -nr 5`) would have launched the **full 250×40 run**. It now
+   `shift`s and forwards `"$@"` after the fixed flags, so overrides win over the config.
+   *(Correction to the 2026-08-06 entry: that smoke command did not work as written.)*
+2. **No GPU-size guard on a mixed-GPU cluster.** Killarney mixes H100-80GB and L40S-48GB;
+   a bare `--gpus-per-node=1` could land 32B fp16 (~64GB) on a 48GB card and OOM ~10
+   minutes into weight loading. Added an `nvidia-smi` preflight that infers the parameter
+   count from the model id, requires 2GB/1B params + 10%, and aborts in seconds with a
+   resubmit hint. Verified: rejects L40S-48GB and A100-40GB for 32B, accepts H100-80GB
+   and 2×A100-40GB; unknown model ids skip the check.
+3. **`configs/logprob_pivots/*.yaml` were dead files.** Nothing read them — all five
+   stages called the frozen `Config()` dataclass, so editing the YAML changed nothing
+   silently (contradicting CLAUDE.md "NEVER hardcode run params in scripts"). Added
+   `load_config()` to `experiment_config.py`: reads the YAML, maps its nested layout onto
+   the flat dataclass, and **raises on unknown keys**. All five stages now call it, and
+   the three with an argparse gained `--config`. Two YAML keys had no code counterpart at
+   all — `scaffold.n_branches` / `scaffold.pivot_top_k` are now real `Config` fields
+   backing the `--n-branches` / `--top-k` defaults, and the entire `controls:` block
+   (paraphrase / back-translation ablations) is **unimplemented**, now labelled as spec-only
+   in `controls.yaml` instead of reading as live configuration.
+   `smoke_test_models` gained `check_defaults_match_yaml()` so dataclass defaults can never
+   drift from the YAML unnoticed.
+4. **`configs/vertex/experiment_a100.yaml` requested a 40GB GPU for a 64GB model.**
+   `a2-highgpu-1g` is the A100-**40GB**; the template's own header claimed 80GB. Changed to
+   `a2-ultragpu-1g` + `NVIDIA_A100_80GB`.
+5. **CLAUDE.md misplaced the GlotLID loader** — `load_glotlid_model()` lives in
+   `answer_extraction.py`, not `language_verification.py` (which has `check_chunk_languages`).
+   Corrected the module map.
+
+**Result:** rollout smoke test 28 passed / 0 failed / 4 skipped (unchanged baseline);
+`bash -n` clean on the sbatch; arg forwarding verified for both the with-args and no-args
+cases; `load_config()` round-trips the run config and rejects a misspelled key; all three
+`--config`-bearing stages `--help` cleanly; every config YAML still parses.
+
+**Next steps:** no rollout data generated yet — the first real run is still pending. Submit
+the 7B smoke run on Killarney (`-np 2 -nr 5`, now actually honored) before committing to the
+32B run, and decide on `retry_on_wrong` (see below).
+
+**Follow-up (same day):** both rollout run configs dropped from `num_rollouts: 40` to `10`
+to make the first pass ~4x cheaper (~112k generations for 250 problems x 3 languages at
+~15 chunks/problem). This is a pipeline-validation setting, not a publishable one — with
+10 rollouts the per-chunk accuracy resolution is 0.1 before `compute_importance` discards
+rollouts failing the cos < 0.8 dissimilarity filter, leaving only a few usable samples per
+chunk. Raise toward 40-100 before drawing cross-language conclusions.
+
+**Open question, not yet fixed:** `--retry_on_wrong` defaults to False, so a base solution
+that gets the wrong answer is kept and rolled out against, inside a directory named
+`correct_base_solution`. Either flip it in the run configs or confirm `compute_importance`
+filters on `is_correct` before trusting stage-2 numbers.
+
 ## 2026-08-06 — SLURM path for stage 1 (Alliance / Compute Canada, free GPU hours)
 
 **Method:** added `scripts/slurm/` as a second, zero-cost execution route for

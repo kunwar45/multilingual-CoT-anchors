@@ -1,5 +1,8 @@
 # ABOUTME: Run parameters for the logprob_pivots pipeline: MGSM subset, Qwen2.5-0.5B base/Instruct pair, generation settings.
-# ABOUTME: Mirrors the frozen defaults in src/logprob_pivots/experiment_config.py; never hardcode these in scripts.
+# ABOUTME: Loaded by src/logprob_pivots/experiment_config.load_config(); every stage reads this file, so edits here change the run.
+#
+# Every stage calls load_config(), which defaults to this file; pass --config to
+# target a different one. Unknown keys raise, so a typo fails loudly.
 seed: 42
 
 dataset:
@@ -22,6 +25,8 @@ scaffold:
   n_branches: 3
   pivot_top_k: 1
 
+# Pointer only — the ablations in controls.yaml are a written spec with NO
+# implementation yet, so nothing in the pipeline reads them (see that file's header).
 controls:
   config_path: configs/logprob_pivots/controls.yaml
 

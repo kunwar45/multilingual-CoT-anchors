@@ -17,8 +17,10 @@ base_solution_type: correct
 rollout_type: default
 
 num_problems: 250
-num_rollouts: 40
+# See qwen25_32b_mgsm.yaml: 10 is a cheap first-pass setting, not a publishable one.
+num_rollouts: 10
 temperature: 0.6
 top_p: 0.95
-max_tokens: 16384
+# See qwen25_32b_mgsm.yaml: 2048 is ample for MGSM and caps runaway generations.
+max_tokens: 2048
 seed: 44

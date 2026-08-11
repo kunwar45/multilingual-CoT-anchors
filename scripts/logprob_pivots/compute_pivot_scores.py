@@ -14,7 +14,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.logprob_pivots.experiment_config import Config
+from src.logprob_pivots.experiment_config import Config, load_config
 from src.logprob_pivots.pivot_scores import sentence_pivot_scores
 
 
@@ -64,9 +64,16 @@ def main():
         action="store_true",
         help="If set, restrict to generations from the 'reason' model only.",
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="YAML run config from configs/logprob_pivots/ "
+             "(default: configs/logprob_pivots/qwen25_05b_mgsm.yaml).",
+    )
     args = parser.parse_args()
 
-    cfg = Config()
+    cfg = load_config(args.config)
     device = pick_device(cfg)
 
     run_dir = args.run_dir or find_latest_run()

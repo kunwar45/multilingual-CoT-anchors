@@ -12,11 +12,11 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.logprob_pivots.experiment_config import Config
+from src.logprob_pivots.experiment_config import load_config
 
 
 def main():
-    cfg = Config()
+    cfg = load_config()
     random.seed(cfg.seed)
 
     rows: list[dict] = []
